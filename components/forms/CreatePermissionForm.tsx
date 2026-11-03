@@ -28,7 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { cn, formatDuration } from '@/lib/utils';
-import { sendPwaNotification } from '@/lib/notifications';
+import { sendPwaNotification, markLocalPermissionAction } from '@/lib/notifications';
 
 interface CreatePermissionFormProps {
   students: Student[];
@@ -279,9 +279,13 @@ export function CreatePermissionForm({
         body: JSON.stringify(payload),
       });
 
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || 'Gagal mengajukan permohonan izin.');
+      }
+
+      if (data?.permission?.id) {
+        markLocalPermissionAction(data.permission.id, data.permission.status);
       }
 
       try {

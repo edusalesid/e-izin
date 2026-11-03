@@ -26,6 +26,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn, formatDuration } from '@/lib/utils';
+import { markLocalPermissionAction } from '@/lib/notifications';
 
 interface CreatePermissionDrawerProps {
   isOpen: boolean;
@@ -272,6 +273,7 @@ export function CreatePermissionDrawer({
         category,
         reason: finalReason,
         applicantType: activeRole === 'ORANG_TUA' ? 'ORANG_TUA' : 'USTADZ',
+        applicantRole: currentUser?.role || activeRole,
         applicantId: currentUser?.id || null,
         applicantName: finalApplicantName,
         applicantPhone: finalApplicantPhone,
@@ -288,9 +290,13 @@ export function CreatePermissionDrawer({
         body: JSON.stringify(payload),
       });
 
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || 'Gagal mengajukan izin santri.');
+      }
+
+      if (data?.permission?.id) {
+        markLocalPermissionAction(data.permission.id, data.permission.status);
       }
 
       // Success Confetti

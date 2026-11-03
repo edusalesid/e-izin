@@ -3,7 +3,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { AuthSession, Student, Permission, UserAccount } from '@/lib/types';
 import { toast } from 'sonner';
-import { registerPushSubscription } from '@/lib/notifications';
+import {
+  registerPushSubscription,
+  ensurePushSubscriptionSynced,
+  checkAndTriggerPermissionNotifications,
+} from '@/lib/notifications';
 
 export interface StaffContextType {
   session: AuthSession | null;
@@ -57,6 +61,11 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const isInitialLoadedRef = useRef(false);
+  const sessionRef = useRef<AuthSession | null>(null);
+  sessionRef.current = session;
+  const studentsRef = useRef<Student[]>([]);
+  studentsRef.current = students;
+  const prevPermissionsMapRef = useRef<Map<string, string> | null>(null);
 
   const refreshData = useCallback(async (silent = false) => {
     if (!silent && !isInitialLoadedRef.current) {
@@ -70,8 +79,22 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
       ]);
 
       if (resStudents?.students) setStudents(resStudents.students);
-      if (resPerms?.permissions) setPermissions(resPerms.permissions);
+      if (resPerms?.permissions) {
+        prevPermissionsMapRef.current = checkAndTriggerPermissionNotifications(
+          prevPermissionsMapRef.current,
+          resPerms.permissions,
+          sessionRef.current,
+          resStudents?.students || studentsRef.current
+        );
+        setPermissions(resPerms.permissions);
+      }
       if (resUsers?.users) setUsers(resUsers.users);
+      if (sessionRef.current) {
+        ensurePushSubscriptionSynced({
+          userId: sessionRef.current.user?.id || sessionRef.current.user?.username,
+          role: sessionRef.current.role,
+        }).catch(() => {});
+      }
     } catch (e) {
       console.error('Failed to fetch staff data', e);
     } finally {
@@ -111,7 +134,7 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         refreshData(true);
       }
-    }, 15000);
+    }, 6000);
 
     const handleSwMessage = (event: MessageEvent) => {
       if (event.data?.type === 'REALTIME_DATA_UPDATE') {

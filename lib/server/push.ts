@@ -25,6 +25,7 @@ export interface PushNotificationPayload {
   title: string;
   body: string;
   url?: string;
+  tag?: string;
   icon?: string;
   badge?: string;
   data?: Record<string, any>;
@@ -34,6 +35,7 @@ export interface PushTargetFilter {
   userIds?: string[];
   roles?: string[];
   studentNisList?: string[];
+  excludeUserIds?: string[];
 }
 
 /**
@@ -66,9 +68,15 @@ export async function sendTargetedPush(
 
     const whereClause = whereConditions.length > 0 ? { OR: whereConditions } : {};
 
-    const subscriptions = await prisma.pushSubscription.findMany({
+    const rawSubscriptions = await prisma.pushSubscription.findMany({
       where: whereClause,
     });
+
+    const excludeSet = new Set((filter?.excludeUserIds || []).filter(Boolean));
+    const subscriptions =
+      excludeSet.size > 0
+        ? rawSubscriptions.filter((s) => !s.userId || !excludeSet.has(s.userId))
+        : rawSubscriptions;
 
     if (subscriptions.length === 0) {
       return { sent: 0, failed: 0 };
@@ -77,11 +85,13 @@ export async function sendTargetedPush(
     const payloadString = JSON.stringify({
       title: payload.title,
       body: payload.body,
+      tag: payload.tag || undefined,
       icon: payload.icon || '/icon-192.png',
       badge: payload.badge || '/favicon-32.png',
       url: payload.url || '/',
       data: {
         url: payload.url || '/',
+        tag: payload.tag || undefined,
         timestamp: Date.now(),
         ...payload.data,
       },

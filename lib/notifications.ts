@@ -5,6 +5,7 @@
  */
 
 import { toast } from 'sonner';
+import type { AuthSession, Permission, Student } from '@/lib/types';
 
 export type NotificationPermissionStatus = NotificationPermission | 'unsupported';
 
@@ -66,21 +67,32 @@ async function getActiveServiceWorker(timeoutMs = 1500): Promise<ServiceWorkerRe
   }
 }
 
-// Cache deduplikasi agar tidak memunculkan notifikasi ganda dalam rentang 2.5 detik
+// Cache deduplikasi agar tidak memunculkan notifikasi ganda
 const recentNotifications = new Map<string, number>();
+const handledLocalActions = new Set<string>();
 
-function isDuplicate(key: string): boolean {
+export function markLocalPermissionAction(permissionId: string, status?: string) {
+  if (!permissionId) return;
+  handledLocalActions.add(`new:${permissionId}`);
+  recentNotifications.set(`tag:perm-new-${permissionId}`, Date.now());
+  if (status) {
+    handledLocalActions.add(`status:${permissionId}:${status}`);
+    recentNotifications.set(`tag:perm-status-${permissionId}-${status}`, Date.now());
+  }
+}
+
+function isDuplicate(key: string, windowMs = 3500): boolean {
   const now = Date.now();
   const lastTime = recentNotifications.get(key);
 
   // Bersihkan cache lama jika sudah menumpuk
-  if (recentNotifications.size > 50) {
+  if (recentNotifications.size > 100) {
     for (const [k, time] of recentNotifications.entries()) {
-      if (now - time > 10000) recentNotifications.delete(k);
+      if (now - time > 30000) recentNotifications.delete(k);
     }
   }
 
-  if (lastTime && now - lastTime < 2500) {
+  if (lastTime && now - lastTime < windowMs) {
     return true;
   }
 
@@ -96,10 +108,15 @@ export async function sendPwaNotification(
     return false;
   }
 
-  // Cek deduplikasi
-  const dedupKey = `${title}|${options?.body || ''}`;
-  if (!options?.silentDuplicateCheck && isDuplicate(dedupKey)) {
-    return true;
+  // Cek deduplikasi berdasarkan tag (jika ada) maupun kombinasi title|body
+  if (!options?.silentDuplicateCheck) {
+    if (options?.tag && isDuplicate(`tag:${options.tag}`, 15000)) {
+      return true;
+    }
+    const dedupKey = `${title}|${options?.body || ''}`;
+    if (isDuplicate(dedupKey, 3500)) {
+      return true;
+    }
   }
 
   // Cek izin notifikasi
@@ -189,6 +206,18 @@ export function initToastPwaBridge() {
       };
     }
   });
+
+  // Catat tag dari Web Push Service Worker agar polling diff tidak memunculkan notifikasi ganda
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event: MessageEvent) => {
+      if (event.data?.type === 'REALTIME_DATA_UPDATE') {
+        const pushTag = event.data?.payload?.tag || event.data?.payload?.data?.tag;
+        if (pushTag) {
+          recentNotifications.set(`tag:${pushTag}`, Date.now());
+        }
+      }
+    });
+  }
 }
 
 
@@ -222,6 +251,8 @@ function getSavedSessionInfo() {
 export const DEFAULT_VAPID_PUBLIC_KEY =
   'BH9AbtWvfE6rMA1Y2_6hg-jcCcQcoof7ObZ0EbG3G5oNoea3H1G6MGn77hi_SFs1kfuBMx0X4eXQxn2-QemA2eo';
 
+let lastSyncedSubscriptionKey = '';
+
 /**
  * Mendaftarkan Web Push Subscription ke server backend
  */
@@ -238,18 +269,35 @@ export async function registerPushSubscription(userInfo?: {
     return false;
   }
 
+  if ('Notification' in window && Notification.permission !== 'granted') {
+    return false;
+  }
+
   const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
 
   try {
     const reg = (await getActiveServiceWorker(2500)) || (await navigator.serviceWorker.ready);
     if (!reg) return false;
 
+    const appServerKey = urlBase64ToUint8Array(vapidPublicKey) as unknown as BufferSource;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as unknown as BufferSource,
-      });
+      try {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: appServerKey,
+        });
+      } catch {
+        // Jika gagal karena kunci VAPID lama berbeda, unsubscribe lalu subscribe ulang
+        const stale = await reg.pushManager.getSubscription();
+        if (stale) {
+          await stale.unsubscribe().catch(() => {});
+        }
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: appServerKey,
+        });
+      }
     }
 
     const rawSub = sub.toJSON();
@@ -275,9 +323,199 @@ export async function registerPushSubscription(userInfo?: {
       }),
     });
 
+    if (res.ok) {
+      lastSyncedSubscriptionKey = `${rawSub.endpoint}|${effectiveUser.userId || ''}|${effectiveUser.role || ''}|${effectiveUser.studentNis || ''}`;
+    }
+
     return res.ok;
   } catch (err) {
     console.warn('Gagal mendaftarkan push notification subscription:', err);
     return false;
   }
+}
+
+/**
+ * Memastikan subscription Web Push tersinkronisasi untuk sesi aktif (otomatis retry jika sempat gagal)
+ */
+export async function ensurePushSubscriptionSynced(userInfo?: {
+  userId?: string;
+  role?: string;
+  studentNis?: string;
+}): Promise<void> {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+
+  const effectiveUser = {
+    ...getSavedSessionInfo(),
+    ...userInfo,
+  };
+  const targetSuffix = `|${effectiveUser.userId || ''}|${effectiveUser.role || ''}|${effectiveUser.studentNis || ''}`;
+  if (lastSyncedSubscriptionKey && lastSyncedSubscriptionKey.endsWith(targetSuffix)) {
+    return;
+  }
+  await registerPushSubscription(effectiveUser).catch(() => {});
+}
+
+/**
+ * Deteksi perubahan data perizinan secara real-time (antara state lama vs baru)
+ * dan picu notifikasi perangkat (PWA Notification + Toast) untuk akun/role yang berhak.
+ */
+export function checkAndTriggerPermissionNotifications(
+  prevMap: Map<string, string> | null,
+  incomingPermissions: Permission[],
+  session: AuthSession | null,
+  students: Student[]
+): Map<string, string> {
+  const nextMap = new Map<string, string>();
+  for (const p of incomingPermissions) {
+    nextMap.set(p.id, p.status);
+  }
+
+  // Jika belum login atau ini baru pemuatan pertama (initial load), cukup simpan snapshot awal
+  if (!session || prevMap === null) {
+    return nextMap;
+  }
+
+  const currentUserId = session.user?.id;
+  const currentUsername = session.user?.username;
+
+  for (const p of incomingPermissions) {
+    const prevStatus = prevMap.get(p.id);
+
+    // 1. IZIN BARU MASUK (!prevStatus)
+    if (!prevStatus) {
+      if (handledLocalActions.has(`new:${p.id}`)) continue;
+
+      const isCreatedByMe = Boolean(
+        (currentUserId && p.applicantId === currentUserId) ||
+          (currentUsername && p.applicantId === currentUsername) ||
+          (session.role === 'ORANG_TUA' &&
+            p.applicantType === 'ORANG_TUA' &&
+            (p.studentNis === session.student?.nis || p.studentId === session.student?.id))
+      );
+
+      if (isCreatedByMe) continue;
+
+      let notifTitle = '';
+      let notifBody = '';
+
+      if (session.role === 'SUPER_ADMIN' || session.role === 'KEPALA_ASRAMA') {
+        notifTitle = 'Pengajuan Izin Santri Baru 📝';
+        notifBody = `${p.studentName} (${p.className}) mengajukan izin: ${p.reason}`;
+      } else if (session.role === 'WALI_KELAS') {
+        const isTargetApprover = Boolean(currentUserId && p.targetApproverId === currentUserId);
+        const studentObj = students.find((s) => s.id === p.studentId || s.nis === p.studentNis);
+        const isMyClass = Boolean(
+          (session.user?.classroomId && studentObj?.classroomId === session.user.classroomId) ||
+            (studentObj?.classroom?.waliKelasId && studentObj.classroom.waliKelasId === currentUserId) ||
+            (!p.targetApproverId && !session.user?.classroomId)
+        );
+
+        if (isTargetApprover || isMyClass) {
+          notifTitle = 'Pengajuan Izin Santri Baru 📝';
+          notifBody = `${p.studentName} (${p.className}) mengajukan izin: ${p.reason}`;
+        }
+      } else if (
+        session.role === 'SATPAM' &&
+        (p.status === 'APPROVED_WALI_KELAS' || p.status === 'SEDANG_DI_LUAR')
+      ) {
+        notifTitle =
+          p.category === 'PESIAR'
+            ? 'Pesiar Santri: Siap Keluar Gerbang 🚪'
+            : 'Izin Baru Siap Keluar 🚪';
+        notifBody = `Santri ${p.studentName} (${p.className}) telah disetujui izin keluar pos gerbang.`;
+      } else if (
+        session.role === 'ORANG_TUA' &&
+        (p.studentNis === session.student?.nis || p.studentId === session.student?.id)
+      ) {
+        notifTitle =
+          p.status === 'APPROVED_WALI_KELAS'
+            ? 'Izin Santri Disetujui Otomatis 🔔'
+            : 'Pengajuan Izin Santri Baru 📝';
+        notifBody = `Izin untuk ananda ${p.studentName} (${p.className}): ${p.reason}`;
+      }
+
+      if (notifTitle && notifBody) {
+        const tag = `perm-new-${p.id}`;
+        toast.info(notifTitle, {
+          description: notifBody,
+          pwa: false,
+        } as any);
+        sendPwaNotification(notifTitle, {
+          body: notifBody,
+          tag,
+          url: '/',
+        }).catch(() => {});
+      }
+      continue;
+    }
+
+    // 2. PERUBAHAN STATUS IZIN (prevStatus !== p.status)
+    if (prevStatus !== p.status) {
+      if (handledLocalActions.has(`status:${p.id}:${p.status}`)) continue;
+
+      const isApprovedByMe = Boolean(currentUserId && p.approvedById === currentUserId);
+      const isCheckoutByMe = Boolean(currentUserId && p.satpamDepartureId === currentUserId);
+      const isCheckinByMe = Boolean(currentUserId && p.satpamReturnId === currentUserId);
+
+      const isMyApplication = Boolean(currentUserId && p.applicantId === currentUserId);
+      const isMyChild = Boolean(
+        session.role === 'ORANG_TUA' &&
+          (p.studentNis === session.student?.nis || p.studentId === session.student?.id)
+      );
+      const isDormHeadOrAdmin =
+        session.role === 'SUPER_ADMIN' || session.role === 'KEPALA_ASRAMA';
+
+      let notifTitle = '';
+      let notifBody = '';
+
+      if (p.status === 'APPROVED_WALI_KELAS' && !isApprovedByMe) {
+        if (isMyApplication || isMyChild || isDormHeadOrAdmin) {
+          notifTitle = 'Izin Santri Disetujui ✅';
+          notifBody = `Alhamdulillah, izin ${p.studentName} (${p.className}) telah disetujui oleh ${p.approvedByName || 'Pihak Sekolah'}.`;
+        } else if (session.role === 'SATPAM') {
+          notifTitle = 'Izin Santri Siap Keluar 🚪';
+          notifBody = `Santri ${p.studentName} (${p.className}) diizinkan keluar pos gerbang.`;
+        }
+      } else if (p.status === 'REJECTED') {
+        if (isMyApplication || isMyChild || isDormHeadOrAdmin) {
+          notifTitle = 'Pengajuan Izin Belum Disetujui ❌';
+          notifBody = `Izin untuk ${p.studentName} belum disetujui: ${p.rejectionReason || 'Silakan hubungi pihak sekolah/asrama.'}`;
+        }
+      } else if (p.status === 'SEDANG_DI_LUAR' && !isCheckoutByMe) {
+        if (isMyApplication || isMyChild || isDormHeadOrAdmin) {
+          notifTitle = 'Santri Telah Keluar Gerbang 🚗';
+          notifBody = `${p.studentName} (${p.className}) telah melewati pos gerbang.`;
+        }
+      } else if (
+        (p.status === 'KEMBALI_TEPAT_WAKTU' || p.status === 'KEMBALI_TERLAMBAT') &&
+        !isCheckinByMe
+      ) {
+        if (isMyApplication || isMyChild || isDormHeadOrAdmin) {
+          const isLate = p.status === 'KEMBALI_TERLAMBAT';
+          notifTitle = isLate
+            ? 'Santri Kembali (Terlambat) ⚠️'
+            : 'Santri Telah Kembali ke Pondok 🏡';
+          notifBody = isLate
+            ? `${p.studentName} (${p.className}) tiba kembali di pondok (terlambat ${p.lateDurationMinutes || 0} menit).`
+            : `Alhamdulillah, ${p.studentName} (${p.className}) telah tiba kembali di pondok tepat waktu.`;
+        }
+      }
+
+      if (notifTitle && notifBody) {
+        const tag = `perm-status-${p.id}-${p.status}`;
+        toast.info(notifTitle, {
+          description: notifBody,
+          pwa: false,
+        } as any);
+        sendPwaNotification(notifTitle, {
+          body: notifBody,
+          tag,
+          url: '/',
+        }).catch(() => {});
+      }
+    }
+  }
+
+  return nextMap;
 }

@@ -21,6 +21,9 @@ import {
   sendPwaNotification,
   requestNotificationPermission,
   registerPushSubscription,
+  ensurePushSubscriptionSynced,
+  checkAndTriggerPermissionNotifications,
+  markLocalPermissionAction,
 } from '@/lib/notifications';
 import { FullPortalPageSkeleton, PortalDashboardSkeleton } from '@/components/skeletons/AppSkeletons';
 
@@ -139,6 +142,11 @@ export default function UnifiedMainPortalPage() {
   }, []);
 
   const isInitialLoadedRef = useRef(false);
+  const sessionRef = useRef<AuthSession | null>(null);
+  sessionRef.current = session;
+  const studentsRef = useRef<Student[]>([]);
+  studentsRef.current = students;
+  const prevPermissionsMapRef = useRef<Map<string, string> | null>(null);
 
   // Fetch all live data from Neon PostgreSQL via API (mendukung silent background update tanpa layout shift)
   const fetchData = useCallback(async (silent = false) => {
@@ -155,8 +163,23 @@ export default function UnifiedMainPortalPage() {
       ]);
 
       if (resStudents?.students) setStudents(resStudents.students);
-      if (resPerms?.permissions) setPermissions(resPerms.permissions);
+      if (resPerms?.permissions) {
+        prevPermissionsMapRef.current = checkAndTriggerPermissionNotifications(
+          prevPermissionsMapRef.current,
+          resPerms.permissions,
+          sessionRef.current,
+          resStudents?.students || studentsRef.current
+        );
+        setPermissions(resPerms.permissions);
+      }
       if (resClassrooms?.classrooms) setClassrooms(resClassrooms.classrooms);
+      if (sessionRef.current) {
+        ensurePushSubscriptionSynced({
+          userId: sessionRef.current.user?.id || sessionRef.current.user?.username,
+          role: sessionRef.current.role,
+          studentNis: sessionRef.current.student?.nis,
+        }).catch(() => {});
+      }
       if (resUsers?.users) {
         setUsers(resUsers.users);
         // Sinkronisasi sesi akun petugas HANYA jika ada data yang benar-benar berubah (mencegah loop)
@@ -229,12 +252,12 @@ export default function UnifiedMainPortalPage() {
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
     window.addEventListener('focus', handleVisibilityOrFocus);
 
-    // B. Smart background polling setiap 15 detik saat aplikasi aktif di layar
+    // B. Smart background polling setiap 6 detik saat aplikasi aktif di layar
     const pollInterval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         fetchData(true);
       }
-    }, 15000);
+    }, 6000);
 
     // C. Terima sinyal dari Service Worker jika ada Web Push baru masuk
     const handleSwMessage = (event: MessageEvent) => {
@@ -259,6 +282,9 @@ export default function UnifiedMainPortalPage() {
 
   // Login handler
   const handleLoginSuccess = (newSession: AuthSession) => {
+    sessionRef.current = newSession;
+    prevPermissionsMapRef.current =
+      permissions.length > 0 ? new Map(permissions.map((p) => [p.id, p.status])) : null;
     setSession(newSession);
     setActiveTab(getDefaultTabForRole(newSession.role));
     try {
@@ -285,11 +311,13 @@ export default function UnifiedMainPortalPage() {
       role: newSession.role,
       studentNis: newSession.student?.nis,
     }).catch(() => {});
-    fetchData(false);
+    fetchData(true);
   };
 
   // Logout handler
   const handleLogout = () => {
+    sessionRef.current = null;
+    prevPermissionsMapRef.current = null;
     setSession(null);
     try {
       localStorage.removeItem(SESSION_KEY);
@@ -332,6 +360,8 @@ export default function UnifiedMainPortalPage() {
         throw new Error(errorData.error || 'Gagal menyetujui izin santri');
       }
 
+      markLocalPermissionAction(id, 'APPROVED_WALI_KELAS');
+
       toast.success('Izin Berhasil Disetujui', {
         description: perm
           ? `Izin untuk ${perm.studentName} telah disetujui oleh ${actorTitle}. Siap keluar gerbang.`
@@ -340,8 +370,9 @@ export default function UnifiedMainPortalPage() {
 
       sendPwaNotification('Izin Santri Disetujui', {
         body: `Permohonan izin telah disetujui oleh ${actorTitle} dan siap untuk check-out gerbang.`,
+        tag: `perm-status-${id}-APPROVED_WALI_KELAS`,
       });
-      fetchData();
+      fetchData(true);
     } catch (err: any) {
       console.error('Approve failed:', err);
       toast.error('Gagal Menyetujui Izin', {
@@ -376,6 +407,8 @@ export default function UnifiedMainPortalPage() {
         throw new Error(errorData.error || 'Gagal menolak izin santri');
       }
 
+      markLocalPermissionAction(id, 'REJECTED');
+
       toast.error('Izin Berhasil Ditolak', {
         description: perm
           ? `Izin ${perm.studentName} ditolak: ${reason}`
@@ -384,8 +417,9 @@ export default function UnifiedMainPortalPage() {
 
       sendPwaNotification('Izin Santri Ditolak', {
         body: `Permohonan izin ditolak: ${reason}`,
+        tag: `perm-status-${id}-REJECTED`,
       });
-      fetchData();
+      fetchData(true);
     } catch (err: any) {
       console.error('Reject failed:', err);
       toast.error('Gagal Menolak Izin', {
@@ -414,6 +448,8 @@ export default function UnifiedMainPortalPage() {
         throw new Error(errorData.error || 'Gagal check-out gerbang');
       }
 
+      markLocalPermissionAction(id, 'SEDANG_DI_LUAR');
+
       toast.success('Check-out Gerbang Berhasil', {
         description: perm
           ? `Santri ${perm.studentName} telah diverifikasi keluar pos gerbang.`
@@ -422,8 +458,9 @@ export default function UnifiedMainPortalPage() {
 
       sendPwaNotification('Santri Keluar Gerbang', {
         body: 'Santri telah check-out di pos satpam dan tercatat Sedang Di Luar Pondok.',
+        tag: `perm-status-${id}-SEDANG_DI_LUAR`,
       });
-      fetchData();
+      fetchData(true);
     } catch (err: any) {
       console.error('CheckOut failed:', err);
       toast.error('Gagal Check-Out Gerbang', {
@@ -455,7 +492,10 @@ export default function UnifiedMainPortalPage() {
 
       const resData = await res.json().catch(() => ({}));
       const updated = resData?.permission;
-      const isLate = updated?.status === 'KEMBALI_TERLAMBAT';
+      const finalStatus = updated?.status || 'KEMBALI_TEPAT_WAKTU';
+      const isLate = finalStatus === 'KEMBALI_TERLAMBAT';
+
+      markLocalPermissionAction(id, finalStatus);
 
       if (isLate) {
         toast.warning('Santri Kembali (Terlambat)', {
@@ -469,8 +509,9 @@ export default function UnifiedMainPortalPage() {
 
       sendPwaNotification('Santri Kembali ke Pondok', {
         body: `Kepulangan santri telah diverifikasi oleh ${session?.user?.name || 'Musyrif Asrama'}.`,
+        tag: `perm-status-${id}-${finalStatus}`,
       });
-      fetchData();
+      fetchData(true);
     } catch (err: any) {
       console.error('CheckIn failed:', err);
       toast.error('Gagal Verifikasi Kepulangan', {

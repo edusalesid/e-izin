@@ -98,25 +98,38 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Kirim Web Push Notification antar-perangkat secara otomatis
+    // Kirim Web Push Notification antar-perangkat secara otomatis (di-await agar selesai di Serverless)
     try {
-      // 1. Beritahu Wali Santri
-      sendTargetedPush({
-        title: 'Santri Pesiar (Keluar Asrama) 🚗',
-        body: `${student.fullName} telah check-out pesiar. Batas waktu kembali: ${returnTime} WIB.`,
-        url: '/',
-      }, {
-        studentNisList: [student.nis],
-      }).catch(() => {});
-
-      // 2. Beritahu Satpam di pos gerbang
-      sendTargetedPush({
-        title: 'Pesiar Santri: Siap Keluar Gerbang 🚪',
-        body: `Santri ${student.fullName} (${student.className}) telah diizinkan pesiar (Batas: ${returnTime} WIB).`,
-        url: '/',
-      }, {
-        roles: ['SATPAM'],
-      }).catch(() => {});
+      const pesiarTag = `perm-new-${created.id}`;
+      const actorExclude = actorId ? [actorId] : [];
+      await Promise.allSettled([
+        // 1. Beritahu Wali Santri
+        sendTargetedPush(
+          {
+            title: 'Santri Pesiar (Keluar Asrama) 🚗',
+            body: `${student.fullName} telah check-out pesiar. Batas waktu kembali: ${returnTime} WIB.`,
+            url: '/',
+            tag: pesiarTag,
+          },
+          {
+            studentNisList: [student.nis],
+            excludeUserIds: actorExclude,
+          }
+        ),
+        // 2. Beritahu Satpam di pos gerbang
+        sendTargetedPush(
+          {
+            title: 'Pesiar Santri: Siap Keluar Gerbang 🚪',
+            body: `Santri ${student.fullName} (${student.className}) telah diizinkan pesiar (Batas: ${returnTime} WIB).`,
+            url: '/',
+            tag: pesiarTag,
+          },
+          {
+            roles: ['SATPAM'],
+            excludeUserIds: actorExclude,
+          }
+        ),
+      ]);
     } catch (pushErr) {
       console.error('Push notification trigger error on Pesiar checkout:', pushErr);
     }

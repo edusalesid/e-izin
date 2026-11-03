@@ -179,24 +179,50 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Kirim Web Push Notification antar-perangkat secara otomatis
+    // Kirim Web Push Notification antar-perangkat secara otomatis (wajib di-await agar tidak diputus Vercel Serverless)
     try {
-      if (isAutoApprove) {
-        sendTargetedPush({
-          title: 'Izin Santri Disetujui Otomatis 🔔',
-          body: `Izin untuk ${studentName} (${className}) telah disetujui.`,
-          url: '/',
-        }, {
-          studentNisList: [studentNis],
-        }).catch(() => {});
+      const creatorExclude = body.applicantId ? [body.applicantId] : [];
+      const newPermTag = `perm-new-${created.id}`;
 
-        sendTargetedPush({
-          title: 'Izin Baru Siap Keluar 🚪',
-          body: `Santri ${studentName} (${className}) telah disetujui izin keluar pos gerbang.`,
-          url: '/',
-        }, {
-          roles: ['SATPAM'],
-        }).catch(() => {});
+      if (isAutoApprove) {
+        await Promise.allSettled([
+          sendTargetedPush(
+            {
+              title: 'Izin Santri Disetujui Otomatis 🔔',
+              body: `Izin untuk ${studentName} (${className}) telah disetujui oleh ${body.applicantName || 'Pihak Sekolah'}.`,
+              url: '/',
+              tag: newPermTag,
+            },
+            {
+              studentNisList: [studentNis],
+              excludeUserIds: creatorExclude,
+            }
+          ),
+          sendTargetedPush(
+            {
+              title: 'Izin Baru Siap Keluar 🚪',
+              body: `Santri ${studentName} (${className}) telah disetujui izin keluar pos gerbang.`,
+              url: '/',
+              tag: newPermTag,
+            },
+            {
+              roles: ['SATPAM'],
+              excludeUserIds: creatorExclude,
+            }
+          ),
+          sendTargetedPush(
+            {
+              title: 'Pengajuan Izin Santri Baru 📝',
+              body: `${studentName} (${className}) izin: ${body.reason} (Oleh: ${body.applicantName || 'Wali Kelas'})`,
+              url: '/',
+              tag: newPermTag,
+            },
+            {
+              roles: ['KEPALA_ASRAMA', 'SUPER_ADMIN'],
+              excludeUserIds: creatorExclude,
+            }
+          ),
+        ]);
       } else {
         const targetRoles = ['KEPALA_ASRAMA', 'SUPER_ADMIN'];
         // Kumpulkan semua ID approver: approver yang dipilih pemohon (misal Anton) dan/atau wali kelas
@@ -207,14 +233,19 @@ export async function POST(request: NextRequest) {
           targetRoles.push('WALI_KELAS');
         }
 
-        sendTargetedPush({
-          title: 'Pengajuan Izin Santri Baru 📝',
-          body: `${studentName} (${className}) mengajukan izin: ${body.reason}`,
-          url: '/',
-        }, {
-          userIds: uniqueApproverIds.length > 0 ? uniqueApproverIds : undefined,
-          roles: targetRoles,
-        }).catch(() => {});
+        await sendTargetedPush(
+          {
+            title: 'Pengajuan Izin Santri Baru 📝',
+            body: `${studentName} (${className}) mengajukan izin: ${body.reason}`,
+            url: '/',
+            tag: newPermTag,
+          },
+          {
+            userIds: uniqueApproverIds.length > 0 ? uniqueApproverIds : undefined,
+            roles: targetRoles,
+            excludeUserIds: creatorExclude,
+          }
+        );
       }
     } catch (pushErr) {
       console.error('Push notification trigger error on POST:', pushErr);
@@ -327,82 +358,136 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
-    // Kirim Web Push Notification antar-perangkat sesuai aksi pembaruan status
+    // Kirim Web Push Notification antar-perangkat sesuai aksi pembaruan status (wajib di-await di Serverless)
     try {
+      const actorExclude = actorId ? [actorId] : [];
+      const statusTag = `perm-status-${updated.id}-${updated.status}`;
+
       if (status === 'APPROVED_WALI_KELAS') {
-        const applicantUserIds = existing.applicantId ? [existing.applicantId] : [];
+        const applicantUserIds = [existing.applicantId, existing.targetApproverId].filter(Boolean) as string[];
 
-        // 1. Beritahu Pemohon (Ustadz pemohon maupun Wali Santri)
-        sendTargetedPush({
-          title: 'Izin Santri Disetujui ✅',
-          body: `Alhamdulillah, izin ${existing.studentName} (${existing.className}) telah disetujui oleh ${actorName}.`,
-          url: '/',
-        }, {
-          userIds: applicantUserIds.length > 0 ? applicantUserIds : undefined,
-          studentNisList: [existing.studentNis],
-        }).catch(() => {});
-
-        // 2. Beritahu Satpam di pos gerbang
-        sendTargetedPush({
-          title: 'Izin Santri Siap Keluar 🚪',
-          body: `Santri ${existing.studentName} (${existing.className}) diizinkan keluar pos gerbang.`,
-          url: '/',
-        }, {
-          roles: ['SATPAM'],
-        }).catch(() => {});
+        await Promise.allSettled([
+          // 1. Beritahu Pemohon (Ustadz pemohon maupun Wali Santri) & Kepala Asrama/Super Admin
+          sendTargetedPush(
+            {
+              title: 'Izin Santri Disetujui ✅',
+              body: `Alhamdulillah, izin ${existing.studentName} (${existing.className}) telah disetujui oleh ${actorName}.`,
+              url: '/',
+              tag: statusTag,
+            },
+            {
+              userIds: applicantUserIds.length > 0 ? applicantUserIds : undefined,
+              roles: ['KEPALA_ASRAMA', 'SUPER_ADMIN'],
+              studentNisList: [existing.studentNis],
+              excludeUserIds: actorExclude,
+            }
+          ),
+          // 2. Beritahu Satpam di pos gerbang
+          sendTargetedPush(
+            {
+              title: 'Izin Santri Siap Keluar 🚪',
+              body: `Santri ${existing.studentName} (${existing.className}) diizinkan keluar pos gerbang.`,
+              url: '/',
+              tag: statusTag,
+            },
+            {
+              roles: ['SATPAM'],
+              excludeUserIds: actorExclude,
+            }
+          ),
+        ]);
       } else if (status === 'REJECTED') {
+        const applicantUserIds = [existing.applicantId, existing.targetApproverId].filter(Boolean) as string[];
+
+        // Beritahu Pemohon (Ustadz pemohon maupun Wali Santri) & Kepala Asrama/Super Admin
+        await sendTargetedPush(
+          {
+            title: 'Pengajuan Izin Belum Disetujui ❌',
+            body: `Izin untuk ${existing.studentName} belum disetujui oleh ${actorName}: ${rejectionReason || 'Silakan hubungi pihak sekolah/asrama.'}`,
+            url: '/',
+            tag: statusTag,
+          },
+          {
+            userIds: applicantUserIds.length > 0 ? applicantUserIds : undefined,
+            roles: ['KEPALA_ASRAMA', 'SUPER_ADMIN'],
+            studentNisList: [existing.studentNis],
+            excludeUserIds: actorExclude,
+          }
+        );
+      } else if (status === 'SEDANG_DI_LUAR') {
         const applicantUserIds = existing.applicantId ? [existing.applicantId] : [];
 
-        // Beritahu Pemohon (Ustadz pemohon maupun Wali Santri)
-        sendTargetedPush({
-          title: 'Pengajuan Izin Belum Disetujui ❌',
-          body: `Izin untuk ${existing.studentName} belum disetujui: ${rejectionReason || 'Silakan hubungi pihak sekolah/asrama.'}`,
-          url: '/',
-        }, {
-          userIds: applicantUserIds.length > 0 ? applicantUserIds : undefined,
-          studentNisList: [existing.studentNis],
-        }).catch(() => {});
-      } else if (status === 'SEDANG_DI_LUAR') {
-        // Beritahu Wali Santri
-        sendTargetedPush({
-          title: 'Santri Telah Keluar Gerbang 🚗',
-          body: `${existing.studentName} telah melewati pos gerbang (Satpam: ${actorName}).`,
-          url: '/',
-        }, {
-          studentNisList: [existing.studentNis],
-        }).catch(() => {});
-
-        // Beritahu Kepala Asrama
-        sendTargetedPush({
-          title: 'Aktivitas Gerbang: Santri Keluar 🚪',
-          body: `${existing.studentName} (${existing.className}) tercatat keluar gerbang oleh Satpam ${actorName}.`,
-          url: '/',
-        }, {
-          roles: ['KEPALA_ASRAMA'],
-        }).catch(() => {});
+        await Promise.allSettled([
+          // Beritahu Wali Santri & Pemohon
+          sendTargetedPush(
+            {
+              title: 'Santri Telah Keluar Gerbang 🚗',
+              body: `${existing.studentName} telah melewati pos gerbang (Satpam: ${actorName}).`,
+              url: '/',
+              tag: statusTag,
+            },
+            {
+              userIds: applicantUserIds.length > 0 ? applicantUserIds : undefined,
+              studentNisList: [existing.studentNis],
+              excludeUserIds: actorExclude,
+            }
+          ),
+          // Beritahu Kepala Asrama & Super Admin
+          sendTargetedPush(
+            {
+              title: 'Aktivitas Gerbang: Santri Keluar 🚪',
+              body: `${existing.studentName} (${existing.className}) tercatat keluar gerbang oleh Satpam ${actorName}.`,
+              url: '/',
+              tag: statusTag,
+            },
+            {
+              roles: ['KEPALA_ASRAMA', 'SUPER_ADMIN'],
+              excludeUserIds: actorExclude,
+            }
+          ),
+        ]);
       } else if (status === 'KEMBALI_TEPAT_WAKTU' || status === 'KEMBALI_TERLAMBAT') {
         const isLate = updated.status === 'KEMBALI_TERLAMBAT';
-        // Beritahu Wali Santri
-        sendTargetedPush({
-          title: isLate ? 'Santri Kembali (Terlambat) ⚠️' : 'Santri Telah Kembali ke Pondok 🏡',
-          body: isLate
-            ? `${existing.studentName} telah tiba di pos gerbang (terlambat ${updated.lateDurationMinutes || 0} menit).`
-            : `Alhamdulillah, ${existing.studentName} telah tiba kembali di pondok tepat waktu.`,
-          url: '/',
-        }, {
-          studentNisList: [existing.studentNis],
-        }).catch(() => {});
+        const applicantUserIds = existing.applicantId ? [existing.applicantId] : [];
 
-        // Beritahu Kepala Asrama jika terlambat
-        if (isLate) {
-          sendTargetedPush({
-            title: 'Laporan Keterlambatan Santri ⚠️',
-            body: `${existing.studentName} (${existing.className}) terlambat ${updated.lateDurationMinutes || 0} menit (Denda: Rp${(updated.lateFineAmount || 0).toLocaleString('id-ID')}).`,
-            url: '/',
-          }, {
-            roles: ['KEPALA_ASRAMA'],
-          }).catch(() => {});
-        }
+        const pushTasks: Promise<any>[] = [
+          // Beritahu Wali Santri & Pemohon
+          sendTargetedPush(
+            {
+              title: isLate ? 'Santri Kembali (Terlambat) ⚠️' : 'Santri Telah Kembali ke Pondok 🏡',
+              body: isLate
+                ? `${existing.studentName} telah tiba di pos gerbang (terlambat ${updated.lateDurationMinutes || 0} menit).`
+                : `Alhamdulillah, ${existing.studentName} telah tiba kembali di pondok tepat waktu.`,
+              url: '/',
+              tag: statusTag,
+            },
+            {
+              userIds: applicantUserIds.length > 0 ? applicantUserIds : undefined,
+              studentNisList: [existing.studentNis],
+              excludeUserIds: actorExclude,
+            }
+          ),
+        ];
+
+        // Beritahu Kepala Asrama & Super Admin
+        pushTasks.push(
+          sendTargetedPush(
+            {
+              title: isLate ? 'Laporan Keterlambatan Santri ⚠️' : 'Santri Kembali ke Pondok 🏡',
+              body: isLate
+                ? `${existing.studentName} (${existing.className}) terlambat ${updated.lateDurationMinutes || 0} menit (Denda: Rp${(updated.lateFineAmount || 0).toLocaleString('id-ID')}).`
+                : `${existing.studentName} (${existing.className}) telah kembali ke pondok tepat waktu.`,
+              url: '/',
+              tag: statusTag,
+            },
+            {
+              roles: ['KEPALA_ASRAMA', 'SUPER_ADMIN'],
+              excludeUserIds: actorExclude,
+            }
+          )
+        );
+
+        await Promise.allSettled(pushTasks);
       }
     } catch (pushErr) {
       console.error('Push notification trigger error on PATCH:', pushErr);
