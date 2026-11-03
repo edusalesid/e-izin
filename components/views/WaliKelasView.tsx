@@ -186,8 +186,8 @@ export function WaliKelasView({
       if (matchByName.length > 0) return matchByName;
     }
 
-    // C. Jika belum ada kelas yang cocok, tampilkan seluruh students
-    return students;
+    // C. Jika belum ada kelas yang cocok, akun ini bukan wali kelas aktif
+    return [];
   }, [students, effectiveClassroomId, classrooms, currentUser]);
 
   const assignedClassName = useMemo(() => {
@@ -198,7 +198,7 @@ export function WaliKelasView({
     if (targetClass?.name) {
       return `Kelas ${targetClass.name}`;
     }
-    return 'Kelas Binaan';
+    return 'Belum Ada Kelas';
   }, [myClassroomStudents, classrooms, effectiveClassroomId]);
 
   // Perizinan khusus santri di kelas binaan
@@ -759,7 +759,21 @@ export function WaliKelasView({
       {/* ========================================================= */}
       {activeTab === 'KELAS' && (
         <div className="space-y-3.5">
-          {/* Quick Alert: Ada Permohonan Izin Menunggu Persetujuan */}
+          {myClassroomStudents.length === 0 ? (
+            <Card className="border border-zinc-200/80 bg-white p-8 text-center rounded-2xl shadow-xs">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-100 border border-zinc-200 flex items-center justify-center mx-auto mb-3.5 text-zinc-600">
+                <Users className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-zinc-900">
+                Anda Bukan Wali Kelas
+              </h3>
+              <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto leading-relaxed">
+                Akun Anda saat ini belum tercatat memiliki kelas santri binaan aktif. Silakan hubungi admin pondok untuk konfirmasi penugasan kelas.
+              </p>
+            </Card>
+          ) : (
+            <>
+              {/* Quick Alert: Ada Permohonan Izin Menunggu Persetujuan */}
           {pendingList.length > 0 && onTabChange && (
             <button
               type="button"
@@ -994,6 +1008,8 @@ export function WaliKelasView({
                 );
               })}
             </div>
+          )}
+            </>
           )}
         </div>
       )}

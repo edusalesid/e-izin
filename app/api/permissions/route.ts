@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { calculateLateMinutes, calculateLateFine, DEFAULT_FINE_SETTINGS } from '@/lib/utils';
+import { sendTargetedPush } from '@/lib/server/push';
 
 export async function GET(request: NextRequest) {
   try {
@@ -174,6 +175,41 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Kirim Web Push Notification antar-perangkat secara otomatis
+    try {
+      if (isAutoApprove) {
+        sendTargetedPush({
+          title: 'Izin Santri Disetujui Otomatis 🔔',
+          body: `Izin untuk ${studentName} (${className}) telah disetujui.`,
+          url: '/',
+        }, {
+          studentNisList: [studentNis],
+        }).catch(() => {});
+
+        sendTargetedPush({
+          title: 'Izin Baru Siap Keluar 🚪',
+          body: `Santri ${studentName} (${className}) telah disetujui izin keluar pos gerbang.`,
+          url: '/',
+        }, {
+          roles: ['SATPAM'],
+        }).catch(() => {});
+      } else {
+        const targetRoles = ['KEPALA_ASRAMA', 'SUPER_ADMIN'];
+        if (!targetApproverId) targetRoles.push('WALI_KELAS');
+
+        sendTargetedPush({
+          title: 'Pengajuan Izin Santri Baru 📝',
+          body: `${studentName} (${className}) mengajukan izin: ${body.reason}`,
+          url: '/',
+        }, {
+          userIds: targetApproverId ? [targetApproverId] : undefined,
+          roles: targetRoles,
+        }).catch(() => {});
+      }
+    } catch (pushErr) {
+      console.error('Push notification trigger error on POST:', pushErr);
+    }
+
     return NextResponse.json({
       success: true,
       isAutoApproved: isAutoApprove,
@@ -280,6 +316,81 @@ export async function PATCH(request: NextRequest) {
         },
       },
     });
+
+    // Kirim Web Push Notification antar-perangkat sesuai aksi pembaruan status
+    try {
+      if (status === 'APPROVED_WALI_KELAS') {
+        // 1. Beritahu Wali Santri
+        sendTargetedPush({
+          title: 'Izin Santri Disetujui ✅',
+          body: `Alhamdulillah, izin ${existing.studentName} (${existing.className}) telah disetujui oleh ${actorName}.`,
+          url: '/',
+        }, {
+          studentNisList: [existing.studentNis],
+        }).catch(() => {});
+
+        // 2. Beritahu Satpam di pos gerbang
+        sendTargetedPush({
+          title: 'Izin Santri Siap Keluar 🚪',
+          body: `Santri ${existing.studentName} (${existing.className}) diizinkan keluar pos gerbang.`,
+          url: '/',
+        }, {
+          roles: ['SATPAM'],
+        }).catch(() => {});
+      } else if (status === 'REJECTED') {
+        // Beritahu Wali Santri
+        sendTargetedPush({
+          title: 'Pengajuan Izin Belum Disetujui ❌',
+          body: `Izin untuk ${existing.studentName} belum disetujui: ${rejectionReason || 'Silakan hubungi pihak sekolah/asrama.'}`,
+          url: '/',
+        }, {
+          studentNisList: [existing.studentNis],
+        }).catch(() => {});
+      } else if (status === 'SEDANG_DI_LUAR') {
+        // Beritahu Wali Santri
+        sendTargetedPush({
+          title: 'Santri Telah Keluar Gerbang 🚗',
+          body: `${existing.studentName} telah melewati pos gerbang (Satpam: ${actorName}).`,
+          url: '/',
+        }, {
+          studentNisList: [existing.studentNis],
+        }).catch(() => {});
+
+        // Beritahu Kepala Asrama
+        sendTargetedPush({
+          title: 'Aktivitas Gerbang: Santri Keluar 🚪',
+          body: `${existing.studentName} (${existing.className}) tercatat keluar gerbang oleh Satpam ${actorName}.`,
+          url: '/',
+        }, {
+          roles: ['KEPALA_ASRAMA'],
+        }).catch(() => {});
+      } else if (status === 'KEMBALI_TEPAT_WAKTU' || status === 'KEMBALI_TERLAMBAT') {
+        const isLate = updated.status === 'KEMBALI_TERLAMBAT';
+        // Beritahu Wali Santri
+        sendTargetedPush({
+          title: isLate ? 'Santri Kembali (Terlambat) ⚠️' : 'Santri Telah Kembali ke Pondok 🏡',
+          body: isLate
+            ? `${existing.studentName} telah tiba di pos gerbang (terlambat ${updated.lateDurationMinutes || 0} menit).`
+            : `Alhamdulillah, ${existing.studentName} telah tiba kembali di pondok tepat waktu.`,
+          url: '/',
+        }, {
+          studentNisList: [existing.studentNis],
+        }).catch(() => {});
+
+        // Beritahu Kepala Asrama jika terlambat
+        if (isLate) {
+          sendTargetedPush({
+            title: 'Laporan Keterlambatan Santri ⚠️',
+            body: `${existing.studentName} (${existing.className}) terlambat ${updated.lateDurationMinutes || 0} menit (Denda: Rp${(updated.lateFineAmount || 0).toLocaleString('id-ID')}).`,
+            url: '/',
+          }, {
+            roles: ['KEPALA_ASRAMA'],
+          }).catch(() => {});
+        }
+      }
+    } catch (pushErr) {
+      console.error('Push notification trigger error on PATCH:', pushErr);
+    }
 
     return NextResponse.json({
       success: true,

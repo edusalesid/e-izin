@@ -145,3 +145,18 @@ model SystemSetting {
 
   @@map("system_settings")
 }
+
+model PushSubscription {
+  id         String   @id @default(cuid())
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  userId     String?  @map("user_id")
+  role       String?
+  studentNis String?  @map("student_nis")
+  deviceInfo String?  @map("device_info")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("push_subscriptions")
+}

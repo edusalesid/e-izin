@@ -1,15 +1,16 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Student, Permission, UserAccount } from '@/lib/types';
 import { CreatePermissionForm } from '../forms/CreatePermissionForm';
 import { PermissionCard } from '../cards/PermissionCard';
 import { HistoryView } from './HistoryView';
 import { PesiarView } from './PesiarView';
-import { Clock, UserCheck, ChevronRight } from 'lucide-react';
+import { Clock, UserCheck, ChevronRight, Search, X } from 'lucide-react';
 import { TabKey } from '../BottomNav';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
@@ -34,11 +35,24 @@ export function UstadzView({
   onRefresh,
   onTabChange,
 }: UstadzViewProps) {
+  const [query, setQuery] = useState('');
+
   const mySubmissions = permissions.filter(
     (p) => p.applicantType === 'USTADZ' && p.applicantId === currentUser.id
   );
 
   const outsideStudents = permissions.filter((p) => p.status === 'SEDANG_DI_LUAR');
+
+  const filteredSubmissions = mySubmissions.filter((p) => {
+    if (!query.trim()) return true;
+    const q = query.toLowerCase();
+    return (
+      p.studentName.toLowerCase().includes(q) ||
+      p.studentNis.includes(q) ||
+      p.className.toLowerCase().includes(q) ||
+      p.reason.toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="space-y-3.5">
@@ -108,20 +122,47 @@ export function UstadzView({
               <h2 className="text-sm font-bold text-zinc-900">Status Permohonan Santri</h2>
               <p className="text-xs text-zinc-600">Izin santri yang diajukan oleh Anda</p>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                onRefresh();
-                toast.success('Data Diperbarui', {
-                  description: 'Status permohonan santri telah disinkronkan.',
-                });
-              }}
-              className="text-xs text-emerald-700 hover:text-emerald-800"
-            >
-              Segarkan
-            </Button>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-zinc-500">
+                {filteredSubmissions.length} Permohonan
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onRefresh();
+                  toast.success('Data Diperbarui', {
+                    description: 'Status permohonan santri telah disinkronkan.',
+                  });
+                }}
+                className="text-xs text-emerald-700 hover:text-emerald-800"
+              >
+                Segarkan
+              </Button>
+            </div>
           </div>
+
+          {mySubmissions.length > 2 && (
+            <div className="relative">
+              <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Cari santri atau keperluan..."
+                className="pl-9 pr-8 h-9 bg-white border-zinc-200 text-xs rounded-xl focus-visible:ring-emerald-600/30"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 p-0.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
 
           {mySubmissions.length === 0 ? (
             <Card className="border-dashed p-8 text-center">
@@ -131,8 +172,25 @@ export function UstadzView({
                 Gunakan tab Ajukan jika ada santri yang meminta izin langsung di lokasi.
               </p>
             </Card>
+          ) : filteredSubmissions.length === 0 ? (
+            <Card className="border-dashed p-6 text-center bg-zinc-50/50 rounded-xl">
+              <Search className="w-6 h-6 text-zinc-400 mx-auto mb-1.5" />
+              <p className="text-xs font-bold text-zinc-800">Tidak Ditemukan</p>
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                Tidak ada pengajuan izin yang cocok dengan kata kunci Anda.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setQuery('')}
+                className="mt-3 text-xs h-7 px-3 rounded-lg cursor-pointer"
+              >
+                Reset Pencarian
+              </Button>
+            </Card>
           ) : (
-            mySubmissions.map((perm) => (
+            filteredSubmissions.map((perm) => (
               <PermissionCard key={perm.id} permission={perm} activeRole="USTADZ_UMUM" />
             ))
           )}

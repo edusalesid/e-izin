@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { AuthSession, Student, Permission, UserAccount } from '@/lib/types';
 import { toast } from 'sonner';
+import { registerPushSubscription } from '@/lib/notifications';
 
 export interface StaffContextType {
   session: AuthSession | null;
@@ -10,7 +11,7 @@ export interface StaffContextType {
   permissions: Permission[];
   users: UserAccount[];
   isLoading: boolean;
-  refreshData: () => Promise<void>;
+  refreshData: (silent?: boolean) => Promise<void>;
   logout: () => void;
 }
 
@@ -55,7 +56,8 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const refreshData = useCallback(async () => {
+  const refreshData = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const [resStudents, resPerms, resUsers] = await Promise.all([
         fetch('/api/students').then((r) => r.json()).catch(() => ({})),
@@ -69,12 +71,56 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error('Failed to fetch staff data', e);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, []);
 
+  // 1. Initial Load & Pendaftaran Push Notification jika sesi aktif
   useEffect(() => {
-    refreshData();
+    refreshData(false);
+    if (session) {
+      registerPushSubscription({
+        userId: session.user?.id || session.user?.username,
+        role: session.role,
+      }).catch(() => {});
+    }
+  }, [refreshData, session]);
+
+  // 2. Realtime Synchronizer: Smart Polling, Focus/Visibility Change, & Service Worker Broadcast
+  useEffect(() => {
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refreshData(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+
+    const pollInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refreshData(true);
+      }
+    }, 15000);
+
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'REALTIME_DATA_UPDATE') {
+        refreshData(true);
+      }
+    };
+
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      clearInterval(pollInterval);
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+      }
+    };
   }, [refreshData]);
 
   const logout = useCallback(() => {

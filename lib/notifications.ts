@@ -21,11 +21,15 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   }
 
   if (Notification.permission === 'granted') {
+    registerPushSubscription().catch(() => {});
     return 'granted';
   }
 
   try {
     const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      registerPushSubscription().catch(() => {});
+    }
     return permission;
   } catch (err) {
     console.error('Error requesting notification permission:', err);
@@ -185,4 +189,96 @@ export function initToastPwaBridge() {
       };
     }
   });
+}
+
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+function getSavedSessionInfo() {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem('e_izin_session_v1');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        userId: parsed.user?.id || parsed.user?.username,
+        role: parsed.role,
+        studentNis: parsed.student?.nis,
+      };
+    }
+  } catch {}
+  return {};
+}
+
+/**
+ * Mendaftarkan Web Push Subscription ke server backend
+ */
+export async function registerPushSubscription(userInfo?: {
+  userId?: string;
+  role?: string;
+  studentNis?: string;
+}): Promise<boolean> {
+  if (
+    typeof window === 'undefined' ||
+    !('serviceWorker' in navigator) ||
+    !('PushManager' in window)
+  ) {
+    return false;
+  }
+
+  const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  if (!vapidPublicKey) {
+    console.warn('NEXT_PUBLIC_VAPID_PUBLIC_KEY tidak ditemukan di environment.');
+    return false;
+  }
+
+  try {
+    const reg = (await getActiveServiceWorker(2500)) || (await navigator.serviceWorker.ready);
+    if (!reg) return false;
+
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as unknown as BufferSource,
+      });
+    }
+
+    const rawSub = sub.toJSON();
+    if (!rawSub.endpoint || !rawSub.keys?.p256dh || !rawSub.keys?.auth) {
+      return false;
+    }
+
+    const effectiveUser = {
+      ...getSavedSessionInfo(),
+      ...userInfo,
+    };
+
+    const res = await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        endpoint: rawSub.endpoint,
+        keys: rawSub.keys,
+        userId: effectiveUser.userId || null,
+        role: effectiveUser.role || null,
+        studentNis: effectiveUser.studentNis || null,
+        deviceInfo: typeof navigator !== 'undefined' ? navigator.userAgent : 'PWA Client',
+      }),
+    });
+
+    return res.ok;
+  } catch (err) {
+    console.warn('Gagal mendaftarkan push notification subscription:', err);
+    return false;
+  }
 }

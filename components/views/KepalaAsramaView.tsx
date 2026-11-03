@@ -22,7 +22,6 @@ import {
   AlertCircle,
   FileText,
   MessageCircle,
-  Shield,
   Home,
   Settings2,
   Save,
@@ -237,6 +236,57 @@ export function KepalaAsramaView({
   const [rejectReason, setRejectReason] = useState('');
   const [processingId, setProcessingId] = useState<string | null>(null);
 
+  // Filter & Search State di tab Monitor & Terlambat
+  const [monitorSearchQuery, setMonitorSearchQuery] = useState('');
+  const [monitorClassFilter, setMonitorClassFilter] = useState('ALL');
+
+  const uniqueClassesFromPermissions = useMemo(() => {
+    const set = new Set<string>();
+    permissions.forEach((p) => p.className && set.add(p.className));
+    return Array.from(set).sort();
+  }, [permissions]);
+
+  const filteredCurrentlyOutside = useMemo(() => {
+    return currentlyOutside.filter((p) => {
+      if (monitorClassFilter !== 'ALL' && p.className !== monitorClassFilter) {
+        return false;
+      }
+      if (monitorSearchQuery.trim()) {
+        const q = monitorSearchQuery.toLowerCase();
+        const matchName = p.studentName.toLowerCase().includes(q);
+        const matchNis = p.studentNis.includes(q);
+        const matchClass = p.className.toLowerCase().includes(q);
+        const matchDorm = p.dormitory.toLowerCase().includes(q);
+        const matchReason = p.reason.toLowerCase().includes(q);
+        const matchEscort = p.escortNote ? p.escortNote.toLowerCase().includes(q) : false;
+        if (!matchName && !matchNis && !matchClass && !matchDorm && !matchReason && !matchEscort) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [currentlyOutside, monitorClassFilter, monitorSearchQuery]);
+
+  const filteredLatePermissions = useMemo(() => {
+    return latePermissions.filter((p) => {
+      if (monitorClassFilter !== 'ALL' && p.className !== monitorClassFilter) {
+        return false;
+      }
+      if (monitorSearchQuery.trim()) {
+        const q = monitorSearchQuery.toLowerCase();
+        const matchName = p.studentName.toLowerCase().includes(q);
+        const matchNis = p.studentNis.includes(q);
+        const matchClass = p.className.toLowerCase().includes(q);
+        const matchDorm = p.dormitory.toLowerCase().includes(q);
+        const matchReason = p.reason.toLowerCase().includes(q);
+        if (!matchName && !matchNis && !matchClass && !matchDorm && !matchReason) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [latePermissions, monitorClassFilter, monitorSearchQuery]);
+
   const toggleDetails = (id: string) => {
     setExpandedCardIds((prev) => ({
       ...prev,
@@ -324,65 +374,27 @@ export function KepalaAsramaView({
 
           {approvalSubTab === 'IZIN' ? (
             <div className="space-y-3">
-          {/* Header Kepala Asrama Ma'had */}
-          <div className="rounded-xl bg-gradient-to-r from-emerald-800 to-emerald-950 p-3.5 sm:p-4 text-white shadow-xs">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-700/80 text-emerald-100 text-[10px] font-semibold">
-                    <CheckSquare className="w-3 h-3 text-emerald-300" />
-                    {currentUser.role === 'SUPER_ADMIN' ? 'Super Admin Pondok' : 'Pengasuhan Asrama'}
-                  </span>
+              {/* Filter & Search Bar */}
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Input
+                    type="text"
+                    placeholder="Cari santri, kamar, atau alasan izin..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 pr-8 h-10 bg-white border-zinc-200 text-xs rounded-xl focus-visible:ring-emerald-600/30"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 p-1"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
-                <h1 className="text-base sm:text-lg font-bold tracking-tight text-white leading-snug">
-                  {currentUser.role === 'SUPER_ADMIN' ? 'Pusat Kontrol Super Admin' : 'Persetujuan Izin Santri Asrama'}
-                </h1>
-                <p className="text-xs text-emerald-100/90 mt-0.5 truncate">
-                  {pendingList.length > 0
-                    ? `${pendingList.length} pengajuan izin menunggu keputusan Anda.`
-                    : 'Semua permohonan santri telah ditinjau.'}
-                </p>
-              </div>
-
-              {pendingList.length > 0 && (
-                <div className="h-10 px-3 rounded-lg bg-black/20 border border-white/10 flex items-center justify-center shrink-0">
-                  <span className="text-xs font-bold text-white tabular-nums">
-                    {pendingList.length} Menunggu
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Info Banner Alur Dual-Approval (Wali Kelas / Kepala Asrama) */}
-          <div className="rounded-xl bg-emerald-50/80 border border-emerald-200/80 p-3 flex items-start gap-2.5 text-xs text-emerald-950">
-            <Shield className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
-            <p className="leading-relaxed">
-              Izin santri otomatis masuk ke antrean <strong>Wali Kelas</strong> dan <strong>Kepala Asrama</strong>. Cukup <strong>salah satu menyetujui</strong>, perizinan langsung terbit dan santri siap keluar melalui gerbang pos satpam.
-            </p>
-          </div>
-
-          {/* Filter & Search Bar */}
-          <div className="space-y-2">
-            <div className="relative">
-              <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <Input
-                type="text"
-                placeholder="Cari santri, kamar, atau alasan izin..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-8 h-10 bg-white border-zinc-200 text-xs rounded-xl focus-visible:ring-emerald-600/30"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 p-1"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
 
             {/* Segmented Filter Pills */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-xs">
@@ -755,10 +767,59 @@ export function KepalaAsramaView({
                 Data real-time santri yang telah melakukan check-out gerbang
               </p>
             </div>
-            <Badge variant="active" className="text-xs font-semibold px-2.5 py-0.5">
-              {currentlyOutside.length} Santri
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              {monitorSearchQuery || monitorClassFilter !== 'ALL' ? (
+                <span className="text-[11px] text-zinc-500 font-medium">
+                  {filteredCurrentlyOutside.length} dari {currentlyOutside.length}
+                </span>
+              ) : null}
+              <Badge variant="active" className="text-xs font-semibold px-2.5 py-0.5">
+                {currentlyOutside.length} Santri
+              </Badge>
+            </div>
           </div>
+
+          {/* Search & Filter Toolbar */}
+          {currentlyOutside.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Input
+                    type="text"
+                    placeholder="Cari nama santri, NIS, kamar, atau alasan..."
+                    value={monitorSearchQuery}
+                    onChange={(e) => setMonitorSearchQuery(e.target.value)}
+                    className="pl-9 pr-8 h-10 bg-white border-zinc-200 text-xs rounded-xl focus-visible:ring-emerald-600/30"
+                  />
+                  {monitorSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setMonitorSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {uniqueClassesFromPermissions.length > 0 && (
+                  <select
+                    value={monitorClassFilter}
+                    onChange={(e) => setMonitorClassFilter(e.target.value)}
+                    className="h-10 px-3 bg-white border border-zinc-200 text-xs rounded-xl text-zinc-700 font-medium focus:outline-emerald-700 cursor-pointer shadow-2xs shrink-0"
+                  >
+                    <option value="ALL">Semua Kelas ({uniqueClassesFromPermissions.length})</option>
+                    {uniqueClassesFromPermissions.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+          )}
 
           {currentlyOutside.length === 0 ? (
             <Card className="border border-zinc-200/80 bg-white p-7 text-center rounded-xl shadow-xs">
@@ -772,9 +833,29 @@ export function KepalaAsramaView({
                 Tidak ada santri yang sedang berizin keluar saat ini. Keberadaan santri terpantau aman.
               </p>
             </Card>
+          ) : filteredCurrentlyOutside.length === 0 ? (
+            <Card className="border border-dashed border-zinc-300 bg-zinc-50/60 p-7 text-center rounded-xl">
+              <Search className="w-6 h-6 text-zinc-400 mx-auto mb-2" />
+              <h3 className="text-xs font-bold text-zinc-800">Santri Tidak Ditemukan</h3>
+              <p className="text-[11px] text-zinc-500 mt-0.5 max-w-xs mx-auto leading-relaxed">
+                Tidak ada santri di luar yang sesuai dengan kata kunci pencarian atau filter kelas yang dipilih.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setMonitorSearchQuery('');
+                  setMonitorClassFilter('ALL');
+                }}
+                className="mt-3 text-xs h-8 px-3 rounded-xl border-zinc-300 cursor-pointer"
+              >
+                Reset Filter Pencarian
+              </Button>
+            </Card>
           ) : (
             <div className="space-y-2.5">
-              {currentlyOutside.map((perm) => (
+              {filteredCurrentlyOutside.map((perm) => (
                 <PermissionCard key={perm.id} permission={perm} activeRole="KEPALA_ASRAMA" onCheckIn={onCheckIn} />
               ))}
             </div>
@@ -938,13 +1019,62 @@ export function KepalaAsramaView({
                 Santri yang melewati batas rencana jam kepulangan ke pondok
               </p>
             </div>
-            <Badge
-              variant={latePermissions.length > 0 ? 'destructive' : 'approved'}
-              className="text-xs font-semibold px-2.5 py-0.5"
-            >
-              {latePermissions.length} Kasus
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              {monitorSearchQuery || monitorClassFilter !== 'ALL' ? (
+                <span className="text-[11px] text-zinc-500 font-medium">
+                  {filteredLatePermissions.length} dari {latePermissions.length}
+                </span>
+              ) : null}
+              <Badge
+                variant={latePermissions.length > 0 ? 'destructive' : 'approved'}
+                className="text-xs font-semibold px-2.5 py-0.5"
+              >
+                {latePermissions.length} Kasus
+              </Badge>
+            </div>
           </div>
+
+          {/* Search & Filter Toolbar */}
+          {latePermissions.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Input
+                    type="text"
+                    placeholder="Cari nama santri terlambat, NIS, kamar, atau alasan..."
+                    value={monitorSearchQuery}
+                    onChange={(e) => setMonitorSearchQuery(e.target.value)}
+                    className="pl-9 pr-8 h-10 bg-white border-zinc-200 text-xs rounded-xl focus-visible:ring-emerald-600/30"
+                  />
+                  {monitorSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setMonitorSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {uniqueClassesFromPermissions.length > 0 && (
+                  <select
+                    value={monitorClassFilter}
+                    onChange={(e) => setMonitorClassFilter(e.target.value)}
+                    className="h-10 px-3 bg-white border border-zinc-200 text-xs rounded-xl text-zinc-700 font-medium focus:outline-emerald-700 cursor-pointer shadow-2xs shrink-0"
+                  >
+                    <option value="ALL">Semua Kelas ({uniqueClassesFromPermissions.length})</option>
+                    {uniqueClassesFromPermissions.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+          )}
 
           {latePermissions.length === 0 ? (
             <Card className="border border-zinc-200/80 bg-white p-7 text-center rounded-xl shadow-xs">
@@ -958,9 +1088,29 @@ export function KepalaAsramaView({
                 Belum ada catatan keterlambatan santri yang melebihi batas waktu izin kepulangan.
               </p>
             </Card>
+          ) : filteredLatePermissions.length === 0 ? (
+            <Card className="border border-dashed border-zinc-300 bg-zinc-50/60 p-7 text-center rounded-xl">
+              <Search className="w-6 h-6 text-zinc-400 mx-auto mb-2" />
+              <h3 className="text-xs font-bold text-zinc-800">Data Keterlambatan Tidak Ditemukan</h3>
+              <p className="text-[11px] text-zinc-500 mt-0.5 max-w-xs mx-auto leading-relaxed">
+                Tidak ada kasus keterlambatan yang cocok dengan kata kunci pencarian atau filter yang dipilih.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setMonitorSearchQuery('');
+                  setMonitorClassFilter('ALL');
+                }}
+                className="mt-3 text-xs h-8 px-3 rounded-xl border-zinc-300 cursor-pointer"
+              >
+                Reset Filter Pencarian
+              </Button>
+            </Card>
           ) : (
             <div className="space-y-2.5">
-              {latePermissions.map((perm) => (
+              {filteredLatePermissions.map((perm) => (
                 <PermissionCard key={perm.id} permission={perm} activeRole="KEPALA_ASRAMA" onCheckIn={onCheckIn} />
               ))}
             </div>

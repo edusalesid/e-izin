@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { sendTargetedPush } from '@/lib/server/push';
 
 export async function POST(request: NextRequest) {
   try {
@@ -96,6 +97,29 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Kirim Web Push Notification antar-perangkat secara otomatis
+    try {
+      // 1. Beritahu Wali Santri
+      sendTargetedPush({
+        title: 'Santri Pesiar (Keluar Asrama) 🚗',
+        body: `${student.fullName} telah check-out pesiar. Batas waktu kembali: ${returnTime} WIB.`,
+        url: '/',
+      }, {
+        studentNisList: [student.nis],
+      }).catch(() => {});
+
+      // 2. Beritahu Satpam di pos gerbang
+      sendTargetedPush({
+        title: 'Pesiar Santri: Siap Keluar Gerbang 🚪',
+        body: `Santri ${student.fullName} (${student.className}) telah diizinkan pesiar (Batas: ${returnTime} WIB).`,
+        url: '/',
+      }, {
+        roles: ['SATPAM'],
+      }).catch(() => {});
+    } catch (pushErr) {
+      console.error('Push notification trigger error on Pesiar checkout:', pushErr);
+    }
 
     return NextResponse.json(
       {

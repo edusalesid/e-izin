@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Student } from '@/lib/types';
 import Papa from 'papaparse';
-import { UploadCloud, FileDown, CheckCircle2, AlertCircle, Search } from 'lucide-react';
+import { UploadCloud, FileDown, CheckCircle2, AlertCircle, Search, X, Users, Filter } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +37,24 @@ export function MasterDataView({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [query, setQuery] = useState('');
+  const [classFilter, setClassFilter] = useState('ALL');
+  const [dormFilter, setDormFilter] = useState('ALL');
+
+  const uniqueClasses = useMemo(() => {
+    const set = new Set<string>();
+    students.forEach((s) => s.className && set.add(s.className));
+    return Array.from(set).sort();
+  }, [students]);
+
+  const uniqueDorms = useMemo(() => {
+    const set = new Set<string>();
+    students.forEach((s) => {
+      if (s.dormitory) {
+        set.add(s.dormitory.split('(')[0].trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [students]);
 
   const handleDownloadTemplate = () => {
     const csvContent =
@@ -123,12 +141,33 @@ export function MasterDataView({
     });
   };
 
-  const filtered = students.filter(
-    (s) =>
-      s.fullName.toLowerCase().includes(query.toLowerCase()) ||
-      s.nis.includes(query) ||
-      s.className.toLowerCase().includes(query.toLowerCase())
-  );
+  const filtered = useMemo(() => {
+    return students.filter((s) => {
+      if (classFilter !== 'ALL' && s.className !== classFilter) return false;
+      if (dormFilter !== 'ALL' && !s.dormitory.toLowerCase().includes(dormFilter.toLowerCase())) return false;
+      if (query.trim()) {
+        const q = query.toLowerCase();
+        const matchName = s.fullName.toLowerCase().includes(q);
+        const matchNis = s.nis.includes(q);
+        const matchClass = s.className.toLowerCase().includes(q);
+        const matchDorm = s.dormitory.toLowerCase().includes(q);
+        const matchParent = s.parentName.toLowerCase().includes(q);
+        const matchPhone = s.parentPhone.includes(q);
+        if (!matchName && !matchNis && !matchClass && !matchDorm && !matchParent && !matchPhone) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [students, classFilter, dormFilter, query]);
+
+  const isFilterActive = query.trim() !== '' || classFilter !== 'ALL' || dormFilter !== 'ALL';
+
+  const handleResetFilter = () => {
+    setQuery('');
+    setClassFilter('ALL');
+    setDormFilter('ALL');
+  };
 
   return (
     <div className="space-y-3.5 pb-8">
@@ -225,43 +264,125 @@ export function MasterDataView({
         </DialogContent>
       </Dialog>
 
-      {/* Student List */}
+      {/* Student List Section */}
       <div className="space-y-2.5">
         <div className="flex items-center justify-between px-0.5">
           <span className="text-xs font-bold text-zinc-800">
             Daftar Santri Terdaftar ({students.length})
           </span>
+          <span className="text-[11px] text-zinc-500">
+            Menampilkan <strong className="text-zinc-900">{filtered.length}</strong> santri
+          </span>
         </div>
 
-        <div className="relative">
-          <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <Input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Cari santri..."
-            className="pl-10"
-          />
+        {/* Search & Filter Bar */}
+        <div className="space-y-2">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Cari nama santri, NIS, wali, atau nomor HP..."
+                className="pl-10 pr-9 h-10 text-xs sm:text-sm bg-white rounded-xl border-zinc-200"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 p-0.5 cursor-pointer"
+                  title="Hapus kata kunci"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {uniqueClasses.length > 0 && (
+                <select
+                  value={classFilter}
+                  onChange={(e) => setClassFilter(e.target.value)}
+                  className="h-10 px-3 bg-white border border-zinc-200 text-xs rounded-xl text-zinc-700 font-medium focus:outline-emerald-700 cursor-pointer shadow-2xs shrink-0"
+                >
+                  <option value="ALL">Semua Kelas ({uniqueClasses.length})</option>
+                  {uniqueClasses.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {uniqueDorms.length > 0 && (
+                <select
+                  value={dormFilter}
+                  onChange={(e) => setDormFilter(e.target.value)}
+                  className="h-10 px-3 bg-white border border-zinc-200 text-xs rounded-xl text-zinc-700 font-medium focus:outline-emerald-700 cursor-pointer shadow-2xs shrink-0"
+                >
+                  <option value="ALL">Semua Asrama ({uniqueDorms.length})</option>
+                  {uniqueDorms.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-2 max-h-80 overflow-y-auto">
-          {filtered.map((s) => (
-            <Card
-              key={s.id}
-              className="p-3 border-zinc-200/90 flex items-center justify-between"
-            >
-              <div>
-                <p className="text-xs font-bold text-zinc-900">{s.fullName}</p>
-                <p className="text-[11px] text-zinc-500">
-                  NIS: {s.nis} &bull; {s.className} &bull; Wali: {s.parentName} ({s.parentPhone})
-                </p>
-              </div>
-              <Badge variant="approved" className="text-[10px]">
-                {s.dormitory.split('(')[0]}
-              </Badge>
-            </Card>
-          ))}
-        </div>
+        {/* List Content */}
+        {filtered.length === 0 ? (
+          <Card className="border border-dashed border-zinc-300 bg-zinc-50/60 p-8 text-center rounded-2xl">
+            <Users className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
+            <h3 className="text-xs font-bold text-zinc-800">Santri Tidak Ditemukan</h3>
+            <p className="text-[11px] text-zinc-500 mt-0.5 max-w-xs mx-auto leading-relaxed">
+              Tidak ada data santri yang sesuai dengan kata kunci pencarian atau filter yang Anda pilih.
+            </p>
+            {isFilterActive && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleResetFilter}
+                className="mt-3 text-xs h-8 px-3 rounded-xl border-zinc-300 cursor-pointer"
+              >
+                Reset Filter & Pencarian
+              </Button>
+            )}
+          </Card>
+        ) : (
+          <div className="space-y-2 max-h-96 overflow-y-auto pr-0.5">
+            {filtered.map((s) => (
+              <Card
+                key={s.id}
+                className="p-3 border-zinc-200/90 hover:border-zinc-300 bg-white shadow-2xs rounded-xl flex items-center justify-between gap-3 transition-colors"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="h-9 w-9 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-800 font-bold text-xs flex items-center justify-center shrink-0">
+                    {s.fullName.substring(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs font-bold text-zinc-900 truncate">{s.fullName}</p>
+                      <span className="text-[10px] font-semibold text-zinc-600 bg-zinc-100 px-1.5 py-0.2 rounded">
+                        {s.className}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 truncate mt-0.5">
+                      NIS: <span className="font-mono text-zinc-700">{s.nis}</span> &bull; Wali: {s.parentName} ({s.parentPhone})
+                    </p>
+                  </div>
+                </div>
+                <Badge variant="approved" className="text-[10px] shrink-0 font-medium">
+                  {s.dormitory.split('(')[0].trim()}
+                </Badge>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

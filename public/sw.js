@@ -1,5 +1,5 @@
 // Service Worker for E-Izin Santri SMAIT Ihsanul Fikri PWA
-const CACHE_NAME = 'e-izin-pwa-v5';
+const CACHE_NAME = 'e-izin-pwa-v6';
 
 const STATIC_ASSETS = [
   '/manifest.json',
@@ -140,5 +140,18 @@ self.addEventListener('push', (event) => {
     },
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(title, options),
+      // Siarkan pesan ke tab/aplikasi yang sedang aktif agar data langsung auto-refresh seketika
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+        for (const client of windowClients) {
+          client.postMessage({
+            type: 'REALTIME_DATA_UPDATE',
+            payload: data,
+          });
+        }
+      }),
+    ])
+  );
 });

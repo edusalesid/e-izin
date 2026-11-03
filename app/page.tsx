@@ -17,7 +17,11 @@ import { CreatePermissionDrawer } from '@/components/drawers/CreatePermissionDra
 import { ReturnStudentDrawer } from '@/components/drawers/ReturnStudentDrawer';
 import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { sendPwaNotification, requestNotificationPermission } from '@/lib/notifications';
+import {
+  sendPwaNotification,
+  requestNotificationPermission,
+  registerPushSubscription,
+} from '@/lib/notifications';
 import { FullPortalPageSkeleton, PortalDashboardSkeleton } from '@/components/skeletons/AppSkeletons';
 
 const SESSION_KEY = 'e_izin_session_v1';
@@ -134,8 +138,9 @@ export default function UnifiedMainPortalPage() {
     }
   }, []);
 
-  // Fetch all live data from Neon PostgreSQL via API
-  const fetchData = useCallback(async () => {
+  // Fetch all live data from Neon PostgreSQL via API (mendukung silent background update tanpa layout shift)
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const [resStudents, resPerms, resUsers, resClassrooms] = await Promise.all([
         fetch('/api/students').then((r) => r.json()).catch(() => ({})),
@@ -176,12 +181,60 @@ export default function UnifiedMainPortalPage() {
     } catch (err) {
       console.error('Failed to load data:', err);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, []);
 
+  // 1. Initial Load & Pendaftaran Web Push Notification
   useEffect(() => {
-    fetchData();
+    fetchData(false);
+    if (session) {
+      registerPushSubscription({
+        userId: session.user?.id || session.user?.username,
+        role: session.role,
+        studentNis: session.student?.nis,
+      }).catch(() => {});
+    }
+  }, [fetchData, session]);
+
+  // 2. Realtime Synchronizer: Smart Polling, Focus/Visibility Change, & Service Worker Broadcast
+  useEffect(() => {
+    // A. Auto refresh saat aplikasi kembali dibuka / layar dinyalakan
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchData(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+
+    // B. Smart background polling setiap 15 detik saat aplikasi aktif di layar
+    const pollInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchData(true);
+      }
+    }, 15000);
+
+    // C. Terima sinyal dari Service Worker jika ada Web Push baru masuk
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'REALTIME_DATA_UPDATE') {
+        fetchData(true);
+      }
+    };
+
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      clearInterval(pollInterval);
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+      }
+    };
   }, [fetchData]);
 
   // Login handler
@@ -207,7 +260,12 @@ export default function UnifiedMainPortalPage() {
     });
 
     requestNotificationPermission().catch(() => {});
-    fetchData();
+    registerPushSubscription({
+      userId: newSession.user?.id || newSession.user?.username,
+      role: newSession.role,
+      studentNis: newSession.student?.nis,
+    }).catch(() => {});
+    fetchData(false);
   };
 
   // Logout handler

@@ -32,36 +32,73 @@ export function SatpamView({
   onTabChange,
 }: SatpamViewProps) {
   const [query, setQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'ALL' | 'KELUAR_SEBENTAR' | 'PULANG_MENGINAP'>('ALL');
+
+  const readyToLeaveAll = useMemo(() => {
+    return permissions.filter((p) => p.status === 'APPROVED_WALI_KELAS');
+  }, [permissions]);
+
+  const currentlyOutsideAll = useMemo(() => {
+    return permissions.filter((p) => p.status === 'SEDANG_DI_LUAR');
+  }, [permissions]);
+
+  const historyListAll = useMemo(() => {
+    return permissions.filter(
+      (p) => p.status === 'KEMBALI_TEPAT_WAKTU' || p.status === 'KEMBALI_TERLAMBAT'
+    );
+  }, [permissions]);
 
   const readyToLeave = useMemo(() => {
-    return permissions.filter(
-      (p) =>
-        p.status === 'APPROVED_WALI_KELAS' &&
-        (p.studentName.toLowerCase().includes(query.toLowerCase()) ||
-          p.studentNis.includes(query) ||
-          p.className.toLowerCase().includes(query.toLowerCase()))
-    );
-  }, [permissions, query]);
+    return readyToLeaveAll.filter((p) => {
+      if (categoryFilter !== 'ALL' && p.category !== categoryFilter) return false;
+      if (query.trim()) {
+        const q = query.toLowerCase();
+        return (
+          p.studentName.toLowerCase().includes(q) ||
+          p.studentNis.includes(q) ||
+          p.className.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [readyToLeaveAll, categoryFilter, query]);
 
   const currentlyOutside = useMemo(() => {
-    return permissions.filter(
-      (p) =>
-        p.status === 'SEDANG_DI_LUAR' &&
-        (p.studentName.toLowerCase().includes(query.toLowerCase()) ||
-          p.studentNis.includes(query) ||
-          p.className.toLowerCase().includes(query.toLowerCase()))
-    );
-  }, [permissions, query]);
+    return currentlyOutsideAll.filter((p) => {
+      if (categoryFilter !== 'ALL' && p.category !== categoryFilter) return false;
+      if (query.trim()) {
+        const q = query.toLowerCase();
+        return (
+          p.studentName.toLowerCase().includes(q) ||
+          p.studentNis.includes(q) ||
+          p.className.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [currentlyOutsideAll, categoryFilter, query]);
 
   const historyList = useMemo(() => {
-    return permissions.filter(
-      (p) =>
-        (p.status === 'KEMBALI_TEPAT_WAKTU' || p.status === 'KEMBALI_TERLAMBAT') &&
-        (p.studentName.toLowerCase().includes(query.toLowerCase()) ||
-          p.studentNis.includes(query) ||
-          p.className.toLowerCase().includes(query.toLowerCase()))
-    );
-  }, [permissions, query]);
+    return historyListAll.filter((p) => {
+      if (categoryFilter !== 'ALL' && p.category !== categoryFilter) return false;
+      if (query.trim()) {
+        const q = query.toLowerCase();
+        return (
+          p.studentName.toLowerCase().includes(q) ||
+          p.studentNis.includes(q) ||
+          p.className.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [historyListAll, categoryFilter, query]);
+
+  const isFilterActive = query.trim() !== '' || categoryFilter !== 'ALL';
+
+  const handleResetFilter = () => {
+    setQuery('');
+    setCategoryFilter('ALL');
+  };
 
   return (
     <div className="space-y-3.5 pb-8">
@@ -103,25 +140,67 @@ export function SatpamView({
         </div>
       </div>
 
-      {/* Quick Search Bar */}
-      <div className="relative">
-        <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-        <Input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Cari nama, NIS, atau kelas santri..."
-          className="pl-9 pr-8 h-10 bg-white border-zinc-200 text-xs rounded-xl focus-visible:ring-emerald-600/30"
-        />
-        {query && (
+      {/* Quick Search & Category Filters */}
+      <div className="space-y-2">
+        <div className="relative">
+          <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Cari nama, NIS, atau kelas santri..."
+            className="pl-9 pr-8 h-10 bg-white border-zinc-200 text-xs rounded-xl focus-visible:ring-emerald-600/30"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Category Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-xs scrollbar-none">
           <button
             type="button"
-            onClick={() => setQuery('')}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 p-1"
+            onClick={() => setCategoryFilter('ALL')}
+            className={cn(
+              'px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 cursor-pointer text-xs',
+              categoryFilter === 'ALL'
+                ? 'bg-zinc-900 text-white shadow-xs'
+                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200/70 hover:text-zinc-900'
+            )}
           >
-            <X className="w-3.5 h-3.5" />
+            Semua Jenis
           </button>
-        )}
+          <button
+            type="button"
+            onClick={() => setCategoryFilter('KELUAR_SEBENTAR')}
+            className={cn(
+              'px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 cursor-pointer text-xs',
+              categoryFilter === 'KELUAR_SEBENTAR'
+                ? 'bg-amber-700 text-white shadow-xs'
+                : 'bg-amber-50 text-amber-900 border border-amber-200/60 hover:bg-amber-100/70'
+            )}
+          >
+            Keluar Sebentar
+          </button>
+          <button
+            type="button"
+            onClick={() => setCategoryFilter('PULANG_MENGINAP')}
+            className={cn(
+              'px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 cursor-pointer text-xs',
+              categoryFilter === 'PULANG_MENGINAP'
+                ? 'bg-emerald-700 text-white shadow-xs'
+                : 'bg-emerald-50 text-emerald-900 border border-emerald-200/60 hover:bg-emerald-100/70'
+            )}
+          >
+            Pulang Menginap
+          </button>
+        </div>
       </div>
 
       {/* Tab: GERBANG (Siap Keluar) */}
@@ -132,12 +211,19 @@ export function SatpamView({
               <h2 className="text-sm font-bold text-zinc-900">Santri Siap Keluar</h2>
               <p className="text-xs text-zinc-600">Izin telah disetujui Wali Kelas</p>
             </div>
-            <Badge variant="approved" className="text-xs font-semibold px-2.5 py-0.5">
-              {readyToLeave.length} Santri
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              {isFilterActive && (
+                <span className="text-[11px] text-zinc-500 font-medium">
+                  {readyToLeave.length} dari {readyToLeaveAll.length}
+                </span>
+              )}
+              <Badge variant="approved" className="text-xs font-semibold px-2.5 py-0.5">
+                {readyToLeave.length} Santri
+              </Badge>
+            </div>
           </div>
 
-          {readyToLeave.length === 0 ? (
+          {readyToLeaveAll.length === 0 ? (
             <Card className="border border-zinc-200/80 bg-white p-7 text-center rounded-xl shadow-xs">
               <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mx-auto mb-3 text-emerald-700">
                 <ShieldCheck className="w-6 h-6" />
@@ -160,6 +246,23 @@ export function SatpamView({
                   </Button>
                 </div>
               )}
+            </Card>
+          ) : readyToLeave.length === 0 ? (
+            <Card className="border border-dashed border-zinc-300 bg-zinc-50/60 p-7 text-center rounded-xl">
+              <Search className="w-6 h-6 text-zinc-400 mx-auto mb-2" />
+              <h3 className="text-xs font-bold text-zinc-800">Santri Tidak Ditemukan</h3>
+              <p className="text-[11px] text-zinc-500 mt-0.5 max-w-xs mx-auto leading-relaxed">
+                Tidak ada santri siap keluar yang sesuai dengan pencarian atau filter jenis izin.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleResetFilter}
+                className="mt-3 text-xs h-8 px-3 rounded-xl border-zinc-300 cursor-pointer"
+              >
+                Reset Filter & Pencarian
+              </Button>
             </Card>
           ) : (
             <div className="space-y-2.5">
@@ -184,12 +287,19 @@ export function SatpamView({
               <h2 className="text-sm font-bold text-zinc-900">Santri Sedang di Luar</h2>
               <p className="text-xs text-zinc-600">Konfirmasi check-in saat santri kembali ke pondok</p>
             </div>
-            <Badge variant="active" className="text-xs font-semibold px-2.5 py-0.5">
-              {currentlyOutside.length} Santri
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              {isFilterActive && (
+                <span className="text-[11px] text-zinc-500 font-medium">
+                  {currentlyOutside.length} dari {currentlyOutsideAll.length}
+                </span>
+              )}
+              <Badge variant="active" className="text-xs font-semibold px-2.5 py-0.5">
+                {currentlyOutside.length} Santri
+              </Badge>
+            </div>
           </div>
 
-          {currentlyOutside.length === 0 ? (
+          {currentlyOutsideAll.length === 0 ? (
             <Card className="border border-zinc-200/80 bg-white p-7 text-center rounded-xl shadow-xs">
               <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mx-auto mb-3 text-emerald-700">
                 <LogOut className="w-6 h-6" />
@@ -200,6 +310,23 @@ export function SatpamView({
               <p className="text-xs text-zinc-600 mt-1 max-w-sm mx-auto leading-relaxed">
                 Tidak ada santri yang sedang berizin di luar lingkungan pondok saat ini.
               </p>
+            </Card>
+          ) : currentlyOutside.length === 0 ? (
+            <Card className="border border-dashed border-zinc-300 bg-zinc-50/60 p-7 text-center rounded-xl">
+              <Search className="w-6 h-6 text-zinc-400 mx-auto mb-2" />
+              <h3 className="text-xs font-bold text-zinc-800">Santri Tidak Ditemukan</h3>
+              <p className="text-[11px] text-zinc-500 mt-0.5 max-w-xs mx-auto leading-relaxed">
+                Tidak ada santri di luar yang sesuai dengan pencarian atau filter jenis izin.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleResetFilter}
+                className="mt-3 text-xs h-8 px-3 rounded-xl border-zinc-300 cursor-pointer"
+              >
+                Reset Filter & Pencarian
+              </Button>
             </Card>
           ) : (
             <div className="space-y-2.5">

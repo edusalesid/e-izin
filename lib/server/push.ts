@@ -1,0 +1,124 @@
+import webpush from 'web-push';
+import { prisma } from '@/lib/prisma';
+
+// Inisialisasi web-push dengan kunci VAPID
+const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:admin@ihsanulfikri.sch.id';
+
+if (vapidPublicKey && vapidPrivateKey) {
+  try {
+    webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+  } catch (err) {
+    console.error('Error setting VAPID details:', err);
+  }
+}
+
+export interface PushNotificationPayload {
+  title: string;
+  body: string;
+  url?: string;
+  icon?: string;
+  badge?: string;
+  data?: Record<string, any>;
+}
+
+export interface PushTargetFilter {
+  userIds?: string[];
+  roles?: string[];
+  studentNisList?: string[];
+}
+
+/**
+ * Kirim web push notification ke target tertentu (spesifik user, role, atau wali santri)
+ */
+export async function sendTargetedPush(
+  payload: PushNotificationPayload,
+  filter?: PushTargetFilter
+): Promise<{ sent: number; failed: number }> {
+  if (!vapidPublicKey || !vapidPrivateKey) {
+    console.warn('VAPID keys not configured, skipping push notification');
+    return { sent: 0, failed: 0 };
+  }
+
+  try {
+    // Bangun filter query prisma
+    const whereConditions: any[] = [];
+
+    if (filter?.userIds && filter.userIds.length > 0) {
+      whereConditions.push({ userId: { in: filter.userIds } });
+    }
+
+    if (filter?.roles && filter.roles.length > 0) {
+      whereConditions.push({ role: { in: filter.roles } });
+    }
+
+    if (filter?.studentNisList && filter.studentNisList.length > 0) {
+      whereConditions.push({ studentNis: { in: filter.studentNisList } });
+    }
+
+    const whereClause = whereConditions.length > 0 ? { OR: whereConditions } : {};
+
+    const subscriptions = await prisma.pushSubscription.findMany({
+      where: whereClause,
+    });
+
+    if (subscriptions.length === 0) {
+      return { sent: 0, failed: 0 };
+    }
+
+    const payloadString = JSON.stringify({
+      title: payload.title,
+      body: payload.body,
+      icon: payload.icon || '/icon-192.png',
+      badge: payload.badge || '/favicon-32.png',
+      url: payload.url || '/',
+      data: {
+        url: payload.url || '/',
+        timestamp: Date.now(),
+        ...payload.data,
+      },
+    });
+
+    let sent = 0;
+    let failed = 0;
+    const expiredIds: string[] = [];
+
+    await Promise.allSettled(
+      subscriptions.map(async (sub) => {
+        const pushSubscription = {
+          endpoint: sub.endpoint,
+          keys: {
+            p256dh: sub.p256dh,
+            auth: sub.auth,
+          },
+        };
+
+        try {
+          await webpush.sendNotification(pushSubscription, payloadString);
+          sent++;
+        } catch (error: any) {
+          failed++;
+          // Kode 404 (Not Found) atau 410 (Gone) berarti subscription sudah kadaluarsa/uninstalled
+          if (error?.statusCode === 404 || error?.statusCode === 410) {
+            expiredIds.push(sub.id);
+          } else {
+            console.error('Error sending push to endpoint:', sub.endpoint, error?.message || error);
+          }
+        }
+      })
+    );
+
+    // Hapus subscription yang sudah expired secara otomatis
+    if (expiredIds.length > 0) {
+      await prisma.pushSubscription.deleteMany({
+        where: { id: { in: expiredIds } },
+      }).catch((e) => console.error('Failed to clean up expired subscriptions', e));
+    }
+
+    return { sent, failed };
+  } catch (err) {
+    console.error('Failed to send push notification:', err);
+    return { sent: 0, failed: 0 };
+  }
+}
