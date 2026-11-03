@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { BottomNav, TabKey } from '@/components/BottomNav';
 import { GeneralLoginView } from '@/components/GeneralLoginView';
@@ -138,9 +138,14 @@ export default function UnifiedMainPortalPage() {
     }
   }, []);
 
+  const isInitialLoadedRef = useRef(false);
+
   // Fetch all live data from Neon PostgreSQL via API (mendukung silent background update tanpa layout shift)
   const fetchData = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
+    // Hanya aktifkan skeleton saat pertama kali halaman dimuat
+    if (!silent && !isInitialLoadedRef.current) {
+      setIsLoading(true);
+    }
     try {
       const [resStudents, resPerms, resUsers, resClassrooms] = await Promise.all([
         fetch('/api/students').then((r) => r.json()).catch(() => ({})),
@@ -154,13 +159,22 @@ export default function UnifiedMainPortalPage() {
       if (resClassrooms?.classrooms) setClassrooms(resClassrooms.classrooms);
       if (resUsers?.users) {
         setUsers(resUsers.users);
-        // Sinkronisasi sesi akun petugas dengan data terbaru dari database
+        // Sinkronisasi sesi akun petugas HANYA jika ada data yang benar-benar berubah (mencegah loop)
         setSession((prev) => {
           if (!prev?.user?.id && !prev?.user?.username) return prev;
           const freshUser = resUsers.users.find(
             (u: UserAccount) => u.id === prev.user?.id || u.username === prev.user?.username
           );
           if (freshUser) {
+            if (
+              prev.role === freshUser.role &&
+              prev.user?.name === freshUser.name &&
+              prev.user?.phone === freshUser.phone &&
+              prev.user?.classroomId === freshUser.classroomId &&
+              prev.user?.pin === freshUser.pin
+            ) {
+              return prev; // Objek sama, tidak memicu re-render
+            }
             const updated: AuthSession = {
               ...prev,
               role: freshUser.role,
@@ -181,13 +195,19 @@ export default function UnifiedMainPortalPage() {
     } catch (err) {
       console.error('Failed to load data:', err);
     } finally {
-      if (!silent) setIsLoading(false);
+      setIsLoading(false);
+      isInitialLoadedRef.current = true;
     }
   }, []);
 
-  // 1. Initial Load & Pendaftaran Web Push Notification
+  // 1. Initial Load hanya 1x saat aplikasi di-mount
   useEffect(() => {
     fetchData(false);
+  }, [fetchData]);
+
+  // 2. Pendaftaran Web Push Notification terpisah (tidak memicu fetch ulang)
+  const sessionUserKey = session?.user?.id || session?.user?.username || session?.student?.nis;
+  useEffect(() => {
     if (session) {
       registerPushSubscription({
         userId: session.user?.id || session.user?.username,
@@ -195,7 +215,7 @@ export default function UnifiedMainPortalPage() {
         studentNis: session.student?.nis,
       }).catch(() => {});
     }
-  }, [fetchData, session]);
+  }, [sessionUserKey, session?.role]);
 
   // 2. Realtime Synchronizer: Smart Polling, Focus/Visibility Change, & Service Worker Broadcast
   useEffect(() => {

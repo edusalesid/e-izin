@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { AuthSession, Student, Permission, UserAccount } from '@/lib/types';
 import { toast } from 'sonner';
 import { registerPushSubscription } from '@/lib/notifications';
@@ -56,8 +56,12 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const isInitialLoadedRef = useRef(false);
+
   const refreshData = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
+    if (!silent && !isInitialLoadedRef.current) {
+      setIsLoading(true);
+    }
     try {
       const [resStudents, resPerms, resUsers] = await Promise.all([
         fetch('/api/students').then((r) => r.json()).catch(() => ({})),
@@ -71,20 +75,26 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error('Failed to fetch staff data', e);
     } finally {
-      if (!silent) setIsLoading(false);
+      setIsLoading(false);
+      isInitialLoadedRef.current = true;
     }
   }, []);
 
-  // 1. Initial Load & Pendaftaran Push Notification jika sesi aktif
+  // 1. Initial Load hanya 1x saat mount
   useEffect(() => {
     refreshData(false);
+  }, [refreshData]);
+
+  // 2. Pendaftaran Push Notification terpisah tanpa memicu refetch loop
+  const staffKey = session?.user?.id || session?.user?.username;
+  useEffect(() => {
     if (session) {
       registerPushSubscription({
         userId: session.user?.id || session.user?.username,
         role: session.role,
       }).catch(() => {});
     }
-  }, [refreshData, session]);
+  }, [staffKey, session?.role]);
 
   // 2. Realtime Synchronizer: Smart Polling, Focus/Visibility Change, & Service Worker Broadcast
   useEffect(() => {
