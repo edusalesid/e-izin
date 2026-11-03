@@ -4,7 +4,35 @@ import { prisma } from '@/lib/prisma';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { endpoint, keys, userId, role, studentNis, deviceInfo } = body;
+    const { endpoint, keys, userId, role, studentNis, deviceInfo, diagnosticError } = body;
+
+    if (diagnosticError) {
+      await prisma.systemSetting.upsert({
+        where: { key: 'last_push_diag' },
+        update: {
+          value: JSON.stringify({
+            diagnosticError,
+            userId,
+            role,
+            studentNis,
+            deviceInfo,
+            timestamp: new Date().toISOString(),
+          }),
+        },
+        create: {
+          key: 'last_push_diag',
+          value: JSON.stringify({
+            diagnosticError,
+            userId,
+            role,
+            studentNis,
+            deviceInfo,
+            timestamp: new Date().toISOString(),
+          }),
+        },
+      }).catch(() => {});
+      return NextResponse.json({ success: false, logged: true });
+    }
 
     if (!endpoint || !keys?.p256dh || !keys?.auth) {
       return NextResponse.json(

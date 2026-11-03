@@ -61,6 +61,7 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const isInitialLoadedRef = useRef(false);
+  const isFetchingRef = useRef(false);
   const sessionRef = useRef<AuthSession | null>(null);
   sessionRef.current = session;
   const studentsRef = useRef<Student[]>([]);
@@ -68,14 +69,17 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
   const prevPermissionsMapRef = useRef<Map<string, string> | null>(null);
 
   const refreshData = useCallback(async (silent = false) => {
+    if (silent && isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     if (!silent && !isInitialLoadedRef.current) {
       setIsLoading(true);
     }
     try {
       const [resStudents, resPerms, resUsers] = await Promise.all([
-        fetch('/api/students').then((r) => r.json()).catch(() => ({})),
-        fetch('/api/permissions').then((r) => r.json()).catch(() => ({})),
-        fetch('/api/users').then((r) => r.json()).catch(() => ({})),
+        fetch('/api/students', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
+        fetch('/api/permissions', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
+        fetch('/api/users', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
       ]);
 
       if (resStudents?.students) setStudents(resStudents.students);
@@ -100,6 +104,7 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
       isInitialLoadedRef.current = true;
+      isFetchingRef.current = false;
     }
   }, []);
 
@@ -131,9 +136,7 @@ export function StaffProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener('focus', handleVisibilityOrFocus);
 
     const pollInterval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        refreshData(true);
-      }
+      refreshData(true);
     }, 6000);
 
     const handleSwMessage = (event: MessageEvent) => {

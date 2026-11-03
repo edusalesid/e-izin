@@ -42,14 +42,17 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
  * Mendapatkan ServiceWorkerRegistration aktif tanpa risiko hanging/freeze.
  * Menggunakan timeout race agar tidak macet jika Service Worker belum siap.
  */
-async function getActiveServiceWorker(timeoutMs = 1500): Promise<ServiceWorkerRegistration | null> {
+async function getActiveServiceWorker(timeoutMs = 2000): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return null;
   }
 
   try {
-    // 1. Cek pendaftaran yang sudah ada langsung
-    const existing = await navigator.serviceWorker.getRegistration();
+    // 1. Cek pendaftaran yang sudah ada langsung atau daftarkan jika belum ada
+    let existing = await navigator.serviceWorker.getRegistration();
+    if (!existing) {
+      existing = await navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+    }
     if (existing && existing.active) {
       return existing;
     }
@@ -61,7 +64,7 @@ async function getActiveServiceWorker(timeoutMs = 1500): Promise<ServiceWorkerRe
     );
 
     const result = await Promise.race([readyPromise, timeoutPromise]);
-    return result;
+    return result || existing || null;
   } catch {
     return null;
   }
@@ -234,17 +237,22 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 
 function getSavedSessionInfo() {
   if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem('e_izin_session_v1');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return {
-        userId: parsed.user?.id || parsed.user?.username,
-        role: parsed.role,
-        studentNis: parsed.student?.nis,
-      };
-    }
-  } catch {}
+  const keys = ['e_izin_session_v1', 'e_izin_session_staff_v1', 'e_izin_session_parent_v1'];
+  for (const key of keys) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.role || parsed.user || parsed.student) {
+          return {
+            userId: parsed.user?.id || parsed.user?.username,
+            role: parsed.role,
+            studentNis: parsed.student?.nis,
+          };
+        }
+      }
+    } catch {}
+  }
   return {};
 }
 
@@ -252,20 +260,27 @@ export const DEFAULT_VAPID_PUBLIC_KEY =
   'BH9AbtWvfE6rMA1Y2_6hg-jcCcQcoof7ObZ0EbG3G5oNoea3H1G6MGn77hi_SFs1kfuBMx0X4eXQxn2-QemA2eo';
 
 let lastSyncedSubscriptionKey = '';
+let subscribeInFlightPromise: Promise<boolean> | null = null;
+
+function isSameServerKey(a: ArrayBuffer | null | undefined, b: Uint8Array): boolean {
+  if (!a) return true;
+  const viewA = new Uint8Array(a);
+  if (viewA.length !== b.length) return false;
+  for (let i = 0; i < b.length; i++) {
+    if (viewA[i] !== b[i]) return false;
+  }
+  return true;
+}
 
 /**
- * Mendaftarkan Web Push Subscription ke server backend
+ * Mendaftarkan Web Push Subscription ke server backend (dengan mutex agar tidak bentrok)
  */
 export async function registerPushSubscription(userInfo?: {
   userId?: string;
   role?: string;
   studentNis?: string;
 }): Promise<boolean> {
-  if (
-    typeof window === 'undefined' ||
-    !('serviceWorker' in navigator) ||
-    !('PushManager' in window)
-  ) {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return false;
   }
 
@@ -273,65 +288,93 @@ export async function registerPushSubscription(userInfo?: {
     return false;
   }
 
-  const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
+  if (subscribeInFlightPromise) {
+    return subscribeInFlightPromise;
+  }
 
-  try {
-    const reg = (await getActiveServiceWorker(2500)) || (await navigator.serviceWorker.ready);
-    if (!reg) return false;
-
-    const appServerKey = urlBase64ToUint8Array(vapidPublicKey) as unknown as BufferSource;
-    let sub = await reg.pushManager.getSubscription();
-    if (!sub) {
-      try {
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: appServerKey,
-        });
-      } catch {
-        // Jika gagal karena kunci VAPID lama berbeda, unsubscribe lalu subscribe ulang
-        const stale = await reg.pushManager.getSubscription();
-        if (stale) {
-          await stale.unsubscribe().catch(() => {});
-        }
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: appServerKey,
-        });
-      }
-    }
-
-    const rawSub = sub.toJSON();
-    if (!rawSub.endpoint || !rawSub.keys?.p256dh || !rawSub.keys?.auth) {
-      return false;
-    }
-
+  subscribeInFlightPromise = (async () => {
     const effectiveUser = {
       ...getSavedSessionInfo(),
       ...userInfo,
     };
+    const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
 
-    const res = await fetch('/api/push/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        endpoint: rawSub.endpoint,
-        keys: rawSub.keys,
-        userId: effectiveUser.userId || null,
-        role: effectiveUser.role || null,
-        studentNis: effectiveUser.studentNis || null,
-        deviceInfo: typeof navigator !== 'undefined' ? navigator.userAgent : 'PWA Client',
-      }),
-    });
+    try {
+      const reg = (await getActiveServiceWorker(3500)) || (await navigator.serviceWorker.ready);
+      if (!reg || !reg.pushManager) {
+        return false;
+      }
 
-    if (res.ok) {
-      lastSyncedSubscriptionKey = `${rawSub.endpoint}|${effectiveUser.userId || ''}|${effectiveUser.role || ''}|${effectiveUser.studentNis || ''}`;
+      const appServerKeyBytes = urlBase64ToUint8Array(vapidPublicKey);
+      const appServerKey = appServerKeyBytes as unknown as BufferSource;
+
+      let sub = await reg.pushManager.getSubscription();
+      if (sub && !isSameServerKey(sub.options?.applicationServerKey, appServerKeyBytes)) {
+        await sub.unsubscribe().catch(() => {});
+        sub = null;
+      }
+
+      if (!sub) {
+        try {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: appServerKey,
+          });
+        } catch {
+          const stale = await reg.pushManager.getSubscription();
+          if (stale) {
+            await stale.unsubscribe().catch(() => {});
+          }
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: appServerKey,
+          });
+        }
+      }
+
+      const rawSub = sub.toJSON();
+      if (!rawSub.endpoint || !rawSub.keys?.p256dh || !rawSub.keys?.auth) {
+        return false;
+      }
+
+      const res = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint: rawSub.endpoint,
+          keys: rawSub.keys,
+          userId: effectiveUser.userId || null,
+          role: effectiveUser.role || null,
+          studentNis: effectiveUser.studentNis || null,
+          deviceInfo: typeof navigator !== 'undefined' ? navigator.userAgent : 'PWA Client',
+        }),
+      });
+
+      if (res.ok) {
+        lastSyncedSubscriptionKey = `${rawSub.endpoint}|${effectiveUser.userId || ''}|${effectiveUser.role || ''}|${effectiveUser.studentNis || ''}`;
+      }
+
+      return res.ok;
+    } catch (err: any) {
+      console.warn('Gagal mendaftarkan push notification subscription:', err);
+      fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          diagnosticError: String(err?.message || err),
+          userId: effectiveUser.userId || null,
+          role: effectiveUser.role || null,
+          studentNis: effectiveUser.studentNis || null,
+          deviceInfo: typeof navigator !== 'undefined' ? navigator.userAgent : 'PWA Client',
+        }),
+      }).catch(() => {});
+      return false;
+    } finally {
+      subscribeInFlightPromise = null;
     }
+  })();
 
-    return res.ok;
-  } catch (err) {
-    console.warn('Gagal mendaftarkan push notification subscription:', err);
-    return false;
-  }
+  return subscribeInFlightPromise;
 }
 
 /**

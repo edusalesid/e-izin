@@ -1,5 +1,5 @@
 // Service Worker for E-Izin Santri SMAIT Ihsanul Fikri PWA
-const CACHE_NAME = 'e-izin-pwa-v7';
+const CACHE_NAME = 'e-izin-pwa-v8';
 
 const STATIC_ASSETS = [
   '/manifest.json',
@@ -129,14 +129,15 @@ self.addEventListener('push', (event) => {
   }
 
   const title = data.title || 'E-Izin Santri';
-  const tag = data.tag || data.data?.tag || undefined;
+  const tag = data.tag || data.data?.tag || `e-izin-push-${Date.now()}`;
   const options = {
     body: data.body || 'Ada pembaruan status izin santri.',
     icon: data.icon || '/icon-192.png',
     badge: data.badge || '/favicon-32.png',
     tag,
-    renotify: Boolean(tag),
-    vibrate: [200, 100, 200],
+    renotify: true,
+    requireInteraction: true,
+    vibrate: [200, 100, 200, 100, 300],
     data: {
       url: data.url || '/',
       tag,

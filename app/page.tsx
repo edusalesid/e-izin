@@ -142,6 +142,7 @@ export default function UnifiedMainPortalPage() {
   }, []);
 
   const isInitialLoadedRef = useRef(false);
+  const isFetchingRef = useRef(false);
   const sessionRef = useRef<AuthSession | null>(null);
   sessionRef.current = session;
   const studentsRef = useRef<Student[]>([]);
@@ -150,16 +151,19 @@ export default function UnifiedMainPortalPage() {
 
   // Fetch all live data from Neon PostgreSQL via API (mendukung silent background update tanpa layout shift)
   const fetchData = useCallback(async (silent = false) => {
+    if (silent && isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     // Hanya aktifkan skeleton saat pertama kali halaman dimuat
     if (!silent && !isInitialLoadedRef.current) {
       setIsLoading(true);
     }
     try {
       const [resStudents, resPerms, resUsers, resClassrooms] = await Promise.all([
-        fetch('/api/students').then((r) => r.json()).catch(() => ({})),
-        fetch('/api/permissions').then((r) => r.json()).catch(() => ({})),
-        fetch('/api/users').then((r) => r.json()).catch(() => ({})),
-        fetch('/api/classrooms').then((r) => r.json()).catch(() => ({})),
+        fetch('/api/students', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
+        fetch('/api/permissions', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
+        fetch('/api/users', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
+        fetch('/api/classrooms', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
       ]);
 
       if (resStudents?.students) setStudents(resStudents.students);
@@ -220,6 +224,7 @@ export default function UnifiedMainPortalPage() {
     } finally {
       setIsLoading(false);
       isInitialLoadedRef.current = true;
+      isFetchingRef.current = false;
     }
   }, []);
 
@@ -252,11 +257,9 @@ export default function UnifiedMainPortalPage() {
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
     window.addEventListener('focus', handleVisibilityOrFocus);
 
-    // B. Smart background polling setiap 6 detik saat aplikasi aktif di layar
+    // B. Smart background polling setiap 6 detik (tetap aktif meskipun aplikasi di-minimize / tab di latar belakang)
     const pollInterval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        fetchData(true);
-      }
+      fetchData(true);
     }, 6000);
 
     // C. Terima sinyal dari Service Worker jika ada Web Push baru masuk

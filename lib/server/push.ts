@@ -112,7 +112,10 @@ export async function sendTargetedPush(
         };
 
         try {
-          await webpush.sendNotification(pushSubscription, payloadString);
+          await webpush.sendNotification(pushSubscription, payloadString, {
+            TTL: 86400,
+            urgency: 'high',
+          });
           sent++;
         } catch (error: any) {
           failed++;
