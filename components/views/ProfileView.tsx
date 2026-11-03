@@ -31,7 +31,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { cn, formatDateTime } from '@/lib/utils';
 import { toast } from 'sonner';
-import { requestNotificationPermission } from '@/lib/notifications';
+import { requestNotificationPermission, registerPushSubscription } from '@/lib/notifications';
 
 interface ProfileViewProps {
   session: AuthSession;
@@ -84,8 +84,26 @@ export function ProfileView({
       const res = await requestNotificationPermission();
       setNotifStatus(res);
       if (res === 'granted') {
-        toast.success('Notifikasi Berfungsi Normal! 🔔', {
-          description: 'Pemberitahuan sistem telah terhubung ke aplikasi smartphone Anda.',
+        // Daftarkan push subscription perangkat ke database server
+        await registerPushSubscription({
+          userId: session.user?.id || session.user?.username,
+          role: session.role,
+          studentNis: student?.nis,
+        });
+
+        // Trigger uji push notification dari server backend
+        const testRes = await fetch('/api/push/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: session.user?.id || session.user?.username,
+            role: session.role,
+            studentNis: student?.nis,
+          }),
+        }).then((r) => r.json()).catch(() => ({}));
+
+        toast.success('Uji Notifikasi Server Berhasil! 🔔', {
+          description: testRes?.message || 'Pemberitahuan push dari server telah dikirim ke perangkat ini.',
         });
       } else if (res === 'denied') {
         toast.error('Izin Notifikasi Diblokir', {

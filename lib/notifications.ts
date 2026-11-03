@@ -219,6 +219,9 @@ function getSavedSessionInfo() {
   return {};
 }
 
+export const DEFAULT_VAPID_PUBLIC_KEY =
+  'BH9AbtWvfE6rMA1Y2_6hg-jcCcQcoof7ObZ0EbG3G5oNoea3H1G6MGn77hi_SFs1kfuBMx0X4eXQxn2-QemA2eo';
+
 /**
  * Mendaftarkan Web Push Subscription ke server backend
  */
@@ -235,11 +238,7 @@ export async function registerPushSubscription(userInfo?: {
     return false;
   }
 
-  const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  if (!vapidPublicKey) {
-    console.warn('NEXT_PUBLIC_VAPID_PUBLIC_KEY tidak ditemukan di environment.');
-    return false;
-  }
+  const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
 
   try {
     const reg = (await getActiveServiceWorker(2500)) || (await navigator.serviceWorker.ready);

@@ -1,10 +1,17 @@
 import webpush from 'web-push';
 import { prisma } from '@/lib/prisma';
 
-// Inisialisasi web-push dengan kunci VAPID
-const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
-const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:admin@ihsanulfikri.sch.id';
+// Inisialisasi web-push dengan kunci VAPID (menggunakan environment variable atau default terkonfigurasi)
+export const DEFAULT_VAPID_PUBLIC_KEY =
+  'BH9AbtWvfE6rMA1Y2_6hg-jcCcQcoof7ObZ0EbG3G5oNoea3H1G6MGn77hi_SFs1kfuBMx0X4eXQxn2-QemA2eo';
+export const DEFAULT_VAPID_PRIVATE_KEY =
+  'FiNIy5w9mP3sE3ll-4AN28-MDqukyybOr0r0ovAmyTk';
+export const DEFAULT_VAPID_SUBJECT =
+  'mailto:admin@ihsanulfikri.sch.id';
+
+const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || DEFAULT_VAPID_PRIVATE_KEY;
+const vapidSubject = process.env.VAPID_SUBJECT || DEFAULT_VAPID_SUBJECT;
 
 if (vapidPublicKey && vapidPrivateKey) {
   try {
