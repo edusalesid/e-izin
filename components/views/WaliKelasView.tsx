@@ -336,7 +336,6 @@ export function WaliKelasView({
       return (
         student.fullName.toLowerCase().includes(q) ||
         student.nis.toLowerCase().includes(q) ||
-        (student.dormitory && student.dormitory.toLowerCase().includes(q)) ||
         (student.parentName && student.parentName.toLowerCase().includes(q))
       );
     });
@@ -538,7 +537,7 @@ export function WaliKelasView({
                             {perm.studentName}
                           </h3>
                           <p className="text-[11px] text-zinc-500 truncate mt-0.5">
-                            {perm.className} &bull; NIS: {perm.studentNis} &bull; {perm.dormitory.split('(')[0].trim()}
+                            {perm.className} &bull; NIS: {perm.studentNis}
                           </p>
                         </div>
                       </div>
@@ -837,7 +836,7 @@ export function WaliKelasView({
               <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <Input
                 type="text"
-                placeholder="Cari santri, NIS, asrama/kamar, atau orang tua..."
+                placeholder="Cari santri, NIS, atau orang tua..."
                 value={studentSearchQuery}
                 onChange={(e) => setStudentSearchQuery(e.target.value)}
                 className="pl-9 pr-8 h-10 bg-white border-zinc-200 text-xs rounded-xl focus-visible:ring-emerald-600/30"
@@ -935,12 +934,12 @@ export function WaliKelasView({
                       </div>
                       <div className="min-w-0 space-y-0.5">
                         <div className="flex items-center gap-2">
-                          <p className="text-sm font-bold text-zinc-900 truncate">
+                          <p className="text-sm font-bold text-zinc-900 leading-snug line-clamp-2">
                             {student.fullName}
                           </p>
                         </div>
                         <p className="text-[11px] text-zinc-500 truncate">
-                          NIS: <span className="font-mono text-zinc-700">{student.nis}</span> &bull; {student.dormitory.split('(')[0].trim()}
+                          NIS: <span className="font-mono text-zinc-700">{student.nis}</span> &bull; {student.className}
                         </p>
 
                         {/* Info Wali & Tombol WhatsApp */}

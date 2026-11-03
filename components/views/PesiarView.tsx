@@ -71,7 +71,6 @@ export function PesiarView({
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState('');
   const [classFilter, setClassFilter] = useState('ALL');
-  const [dormFilter, setDormFilter] = useState('ALL');
   const [viewTab, setViewTab] = useState<'PENGELUARAN' | 'SEDANG_KELUAR' | 'RIWAYAT_SELESAI'>('PENGELUARAN');
 
   // Helper formatting date ID safely without timezone shift
@@ -197,20 +196,10 @@ export function PesiarView({
     return map;
   }, [permissions]);
 
-  // Classes & Dorms for dropdown
+  // Classes for dropdown
   const uniqueClasses = useMemo(() => {
     const set = new Set<string>();
     students.forEach((s) => s.className && set.add(s.className));
-    return Array.from(set).sort();
-  }, [students]);
-
-  const uniqueDorms = useMemo(() => {
-    const set = new Set<string>();
-    students.forEach((s) => {
-      if (s.dormitory) {
-        set.add(s.dormitory.split('(')[0].trim());
-      }
-    });
     return Array.from(set).sort();
   }, [students]);
 
@@ -221,16 +210,13 @@ export function PesiarView({
         searchQuery.trim() === '' ||
         s.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.nis.includes(searchQuery) ||
-        s.className.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.dormitory.toLowerCase().includes(searchQuery.toLowerCase());
+        s.className.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchClass = classFilter === 'ALL' || s.className === classFilter;
-      const matchDorm =
-        dormFilter === 'ALL' || s.dormitory.toLowerCase().includes(dormFilter.toLowerCase());
 
-      return matchSearch && matchClass && matchDorm;
+      return matchSearch && matchClass;
     });
-  }, [students, searchQuery, classFilter, dormFilter]);
+  }, [students, searchQuery, classFilter]);
 
   // Filtered santri yang sedang di luar pesiar
   const filteredActiveOutside = useMemo(() => {
@@ -239,16 +225,13 @@ export function PesiarView({
         searchQuery.trim() === '' ||
         p.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.studentNis.includes(searchQuery) ||
-        p.className.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.dormitory.toLowerCase().includes(searchQuery.toLowerCase());
+        p.className.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchClass = classFilter === 'ALL' || p.className === classFilter;
-      const matchDorm =
-        dormFilter === 'ALL' || p.dormitory.toLowerCase().includes(dormFilter.toLowerCase());
 
-      return matchSearch && matchClass && matchDorm;
+      return matchSearch && matchClass;
     });
-  }, [activeOutsidePesiar, searchQuery, classFilter, dormFilter]);
+  }, [activeOutsidePesiar, searchQuery, classFilter]);
 
   // Filtered santri yang sudah selesai dan kembali
   const filteredCompletedPesiar = useMemo(() => {
@@ -257,16 +240,13 @@ export function PesiarView({
         searchQuery.trim() === '' ||
         p.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.studentNis.includes(searchQuery) ||
-        p.className.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.dormitory.toLowerCase().includes(searchQuery.toLowerCase());
+        p.className.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchClass = classFilter === 'ALL' || p.className === classFilter;
-      const matchDorm =
-        dormFilter === 'ALL' || p.dormitory.toLowerCase().includes(dormFilter.toLowerCase());
 
-      return matchSearch && matchClass && matchDorm;
+      return matchSearch && matchClass;
     });
-  }, [completedPesiar, searchQuery, classFilter, dormFilter]);
+  }, [completedPesiar, searchQuery, classFilter]);
 
   // Handle Tambah Jadwal Baru (Khusus Kepala Asrama / Super Admin)
   const handleAddNewSchedule = async () => {
@@ -800,19 +780,6 @@ export function PesiarView({
                   </option>
                 ))}
               </select>
-
-              <select
-                value={dormFilter}
-                onChange={(e) => setDormFilter(e.target.value)}
-                className="h-9 px-2.5 bg-white border border-zinc-200 text-xs rounded-xl text-zinc-700 font-medium focus:outline-emerald-600 max-w-[150px] truncate"
-              >
-                <option value="ALL">Semua Asrama</option>
-                {uniqueDorms.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
 
@@ -868,8 +835,7 @@ export function PesiarView({
                           )}
                         </div>
                         <p className="text-[11px] text-zinc-500 truncate mt-0.5">
-                          {student.className} &bull; NIS: {student.nis} &bull;{' '}
-                          {student.dormitory.split('(')[0].trim()}
+                          {student.className} &bull; NIS: {student.nis}
                         </p>
                       </div>
                     </div>
@@ -1004,8 +970,7 @@ export function PesiarView({
                             {perm.studentName}
                           </h4>
                           <p className="text-[11px] text-zinc-500 truncate mt-0.5">
-                            {perm.className} &bull; NIS: {perm.studentNis} &bull;{' '}
-                            {perm.dormitory.split('(')[0].trim()}
+                            {perm.className} &bull; NIS: {perm.studentNis}
                           </p>
                         </div>
                       </div>

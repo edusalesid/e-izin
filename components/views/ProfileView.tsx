@@ -451,10 +451,6 @@ export function ProfileView({
                 <span className="font-semibold text-zinc-900">{student.className}</span>
               </div>
 
-              <div className="flex justify-between items-center py-1 border-b border-zinc-100">
-                <span className="text-zinc-500">Gedung Asrama & Kamar</span>
-                <span className="font-semibold text-zinc-900 text-right">{student.dormitory}</span>
-              </div>
 
               <div className="flex justify-between items-center py-1 border-b border-zinc-100">
                 <span className="text-zinc-500">Jenis Kelamin</span>

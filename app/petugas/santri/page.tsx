@@ -36,7 +36,7 @@ export default function SantriPosisiPage() {
     const matchesSearch =
       student.fullName.toLowerCase().includes(query.toLowerCase()) ||
       student.nis.includes(query) ||
-      student.dormitory.toLowerCase().includes(query.toLowerCase());
+      student.className.toLowerCase().includes(query.toLowerCase());
 
     if (!matchesSearch) return false;
 
@@ -93,7 +93,7 @@ export default function SantriPosisiPage() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Cari nama santri, NIS, atau asrama..."
+          placeholder="Cari nama santri, NIS, atau kelas..."
           className="w-full rounded-xl border border-zinc-300 bg-white pl-10 pr-3.5 py-2.5 text-base sm:text-xs font-medium text-zinc-900 placeholder-zinc-400 focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20 min-h-[44px]"
         />
       </div>
@@ -188,14 +188,11 @@ export default function SantriPosisiPage() {
                     {student.fullName.substring(0, 2).toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-zinc-900 truncate">
+                    <p className="text-xs font-bold text-zinc-900 leading-snug line-clamp-2">
                       {student.fullName}
                     </p>
-                    <p className="text-[10px] text-zinc-500 truncate">
+                    <p className="text-[10px] text-zinc-500 truncate mt-0.5">
                       NIS: {student.nis} &bull; {student.className}
-                    </p>
-                    <p className="text-[10px] text-zinc-400 truncate">
-                      {student.dormitory.split('(')[0]}
                     </p>
                   </div>
                 </div>

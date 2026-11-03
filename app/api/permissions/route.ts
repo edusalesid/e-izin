@@ -100,6 +100,52 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Data santri tidak ditemukan.' }, { status: 400 });
     }
 
+    // Aturan Perizinan:
+    // 1. Perizinan hanya bisa dilakukan 1 santri.
+    // 2. Jika santri sedang dalam tinjauan (PENDING_WALI_KELAS), tidak bisa menambahkan lagi dan harus menunggu di-approve.
+    // 3. Jika santri sudah di-approve (APPROVED_WALI_KELAS) atau sedang di luar/pulang (SEDANG_DI_LUAR), tidak dapat mengajukan izin baru.
+    const activePermission = await prisma.permission.findFirst({
+      where: {
+        OR: [
+          { studentId: body.studentId },
+          ...(studentNis && studentNis !== '-' ? [{ studentNis }] : []),
+        ],
+        status: {
+          in: ['PENDING_WALI_KELAS', 'APPROVED_WALI_KELAS', 'SEDANG_DI_LUAR'],
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (activePermission) {
+      if (activePermission.status === 'PENDING_WALI_KELAS') {
+        return NextResponse.json(
+          {
+            error: `Santri ${studentName} masih memiliki permohonan izin yang sedang dalam tinjauan. Tidak bisa menambahkan izin lagi, harus menunggu persetujuan (approve).`,
+          },
+          { status: 400 }
+        );
+      }
+
+      if (activePermission.status === 'APPROVED_WALI_KELAS') {
+        return NextResponse.json(
+          {
+            error: `Santri ${studentName} sudah memiliki perizinan yang telah disetujui (siap keluar gerbang). Tidak bisa mengajukan izin baru.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      if (activePermission.status === 'SEDANG_DI_LUAR') {
+        return NextResponse.json(
+          {
+            error: `Santri ${studentName} saat ini tercatat sedang berada di luar pondok / pulang. Pengajuan izin baru hanya dapat dilakukan setelah santri kembali.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Aturan Auto-Approval:
     // 1. Jika pembuat izin adalah Kepala Asrama -> langsung AUTO-APPROVED
     // 2. Jika pembuat izin adalah Wali Kelas dari kelas santri ini -> langsung AUTO-APPROVED

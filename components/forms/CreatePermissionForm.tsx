@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Student, PermissionCategory, EscortType, UserRole, UserAccount } from '@/lib/types';
+import { Student, PermissionCategory, EscortType, UserRole, UserAccount, Permission } from '@/lib/types';
 import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
 import {
@@ -32,6 +32,7 @@ import { sendPwaNotification, markLocalPermissionAction } from '@/lib/notificati
 
 interface CreatePermissionFormProps {
   students: Student[];
+  permissions?: Permission[];
   preselectedStudent?: Student | null;
   activeRole: UserRole;
   currentUser: UserAccount | null;
@@ -49,15 +50,46 @@ const PRESET_REASONS = [
 
 export function CreatePermissionForm({
   students,
+  permissions = [],
   preselectedStudent = null,
   activeRole,
   currentUser,
   onSuccess,
 }: CreatePermissionFormProps) {
+  // Santri yang pulang / sudah di approve (APPROVED_WALI_KELAS atau SEDANG_DI_LUAR) tidak muncul di daftar pengajuan
+  const availableStudents = useMemo(() => {
+    return students.filter((s) => {
+      const activePerm = permissions.find(
+        (p) =>
+          (p.studentId === s.id || (s.nis && p.studentNis === s.nis)) &&
+          (p.status === 'APPROVED_WALI_KELAS' || p.status === 'SEDANG_DI_LUAR')
+      );
+      return !activePerm;
+    });
+  }, [students, permissions]);
+
   // Pilihan Santri
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(
-    preselectedStudent || (students.length > 0 ? students[0] : null)
+    preselectedStudent || (availableStudents.length > 0 ? availableStudents[0] : null)
   );
+
+  useEffect(() => {
+    if (preselectedStudent) {
+      setSelectedStudent(preselectedStudent);
+    } else if (!selectedStudent && availableStudents.length > 0) {
+      setSelectedStudent(availableStudents[0]);
+    }
+  }, [preselectedStudent, availableStudents]);
+
+  // Status izin santri yang dipilih (jika sedang dalam tinjauan / aktif)
+  const selectedStudentPerm = useMemo(() => {
+    if (!selectedStudent) return null;
+    return permissions.find(
+      (p) =>
+        (p.studentId === selectedStudent.id || (selectedStudent.nis && p.studentNis === selectedStudent.nis)) &&
+        (p.status === 'PENDING_WALI_KELAS' || p.status === 'APPROVED_WALI_KELAS' || p.status === 'SEDANG_DI_LUAR')
+    );
+  }, [selectedStudent, permissions]);
 
   // Search Dropdown state untuk santri
   const [studentSearch, setStudentSearch] = useState('');
@@ -145,15 +177,15 @@ export function CreatePermissionForm({
 
   // Filter daftar santri
   const filteredStudents = useMemo(() => {
-    if (!studentSearch.trim()) return students;
+    if (!studentSearch.trim()) return availableStudents;
     const q = studentSearch.toLowerCase();
-    return students.filter(
+    return availableStudents.filter(
       (s) =>
         s.fullName.toLowerCase().includes(q) ||
         s.nis.includes(q) ||
         s.className.toLowerCase().includes(q)
     );
-  }, [students, studentSearch]);
+  }, [availableStudents, studentSearch]);
 
   // Cek apakah pengaju berhak auto-approve untuk santri yang dipilih (Wali Kelas santri sendiri / Kepala Asrama)
   const isAutoApproveEligible = useMemo(() => {
@@ -222,6 +254,20 @@ export function CreatePermissionForm({
       return;
     }
 
+    if (selectedStudentPerm?.status === 'PENDING_WALI_KELAS') {
+      const msg = `Santri ${selectedStudent.fullName} masih memiliki permohonan izin yang sedang dalam tinjauan. Tidak bisa menambahkan izin lagi, harus menunggu persetujuan (approve).`;
+      setErrorMessage(msg);
+      toast.error('Tidak Dapat Mengajukan Izin', { description: msg });
+      return;
+    }
+
+    if (selectedStudentPerm?.status === 'APPROVED_WALI_KELAS' || selectedStudentPerm?.status === 'SEDANG_DI_LUAR') {
+      const msg = `Santri ${selectedStudent.fullName} sudah memiliki perizinan aktif (${selectedStudentPerm.status === 'APPROVED_WALI_KELAS' ? 'telah disetujui' : 'sedang di luar/pulang'}).`;
+      setErrorMessage(msg);
+      toast.error('Tidak Dapat Mengajukan Izin', { description: msg });
+      return;
+    }
+
     if (!timeValidation.isValid) {
       setErrorMessage(timeValidation.message);
       return;
@@ -258,7 +304,7 @@ export function CreatePermissionForm({
         studentName: selectedStudent.fullName,
         studentNis: selectedStudent.nis,
         className: selectedStudent.className,
-        dormitory: selectedStudent.dormitory,
+        dormitory: selectedStudent.dormitory || '-',
         category,
         reason: finalReason,
         applicantType: activeRole === 'ORANG_TUA' ? 'ORANG_TUA' : 'USTADZ',
@@ -410,33 +456,48 @@ export function CreatePermissionForm({
                       Santri tidak ditemukan.
                     </div>
                   ) : (
-                    filteredStudents.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedStudent(s);
-                          setStudentSearch('');
-                          setIsStudentDropdownOpen(false);
-                        }}
-                        className={cn(
-                          'w-full text-left p-2.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer',
-                          selectedStudent?.id === s.id
-                            ? 'bg-emerald-50 text-emerald-950 font-semibold'
-                            : 'hover:bg-zinc-50 text-zinc-800'
-                        )}
-                      >
-                        <div className="min-w-0 pr-2">
-                          <p className="font-bold truncate text-zinc-900">{s.fullName}</p>
-                          <p className="text-[11px] text-zinc-500 truncate">
-                            {s.className} &bull; NIS: {s.nis} &bull; {s.dormitory.split('(')[0]}
-                          </p>
-                        </div>
-                        {selectedStudent?.id === s.id && (
-                          <Check className="w-4 h-4 text-emerald-700 shrink-0" />
-                        )}
-                      </button>
-                    ))
+                    filteredStudents.map((s) => {
+                      const isPending = permissions.some(
+                        (p) =>
+                          (p.studentId === s.id || (s.nis && p.studentNis === s.nis)) &&
+                          p.status === 'PENDING_WALI_KELAS'
+                      );
+
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedStudent(s);
+                            setStudentSearch('');
+                            setIsStudentDropdownOpen(false);
+                          }}
+                          className={cn(
+                            'w-full text-left p-2.5 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer',
+                            selectedStudent?.id === s.id
+                              ? 'bg-emerald-50 text-emerald-950 font-semibold'
+                              : 'hover:bg-zinc-50 text-zinc-800'
+                          )}
+                        >
+                          <div className="min-w-0 pr-2">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-bold truncate text-zinc-900">{s.fullName}</p>
+                              {isPending && (
+                                <span className="text-[10px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded-md">
+                                  Dalam Tinjauan
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-zinc-500 truncate">
+                              {s.className} &bull; NIS: {s.nis}
+                            </p>
+                          </div>
+                          {selectedStudent?.id === s.id && (
+                            <Check className="w-4 h-4 text-emerald-700 shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               )}
@@ -484,11 +545,11 @@ export function CreatePermissionForm({
               </div>
               <div>
                 <span className="text-zinc-500 block flex items-center gap-1">
-                  <Home className="w-3 h-3 text-zinc-500" />
-                  Kamar / Asrama:
+                  <User className="w-3 h-3 text-emerald-700" />
+                  Status Santri:
                 </span>
                 <strong className="text-zinc-900 font-semibold truncate block">
-                  {selectedStudent.dormitory.split('(')[0].trim()}
+                  {selectedStudent.gender === 'L' ? 'Santri Ikhwan (L)' : 'Santri Akhwat (P)'}
                 </strong>
               </div>
             </div>
@@ -526,6 +587,32 @@ export function CreatePermissionForm({
                     </div>
                   </>
                 )}
+              </div>
+            )}
+            {/* Peringatan jika santri sedang dalam tinjauan atau sudah memiliki izin aktif */}
+            {selectedStudentPerm?.status === 'PENDING_WALI_KELAS' && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 flex items-start gap-2.5 shadow-2xs mt-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="font-bold text-amber-950">Santri Sedang Dalam Tinjauan</p>
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    Santri ini masih memiliki permohonan izin yang sedang dalam tinjauan (menunggu persetujuan). Tidak bisa menambahkan permohonan izin baru sebelum izin ini disetujui (approve).
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {(selectedStudentPerm?.status === 'APPROVED_WALI_KELAS' || selectedStudentPerm?.status === 'SEDANG_DI_LUAR') && (
+              <div className="rounded-xl border border-blue-300 bg-blue-50 p-3 text-xs text-blue-900 flex items-start gap-2.5 shadow-2xs mt-2">
+                <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="font-bold text-blue-950">Santri Sudah Memiliki Izin Aktif</p>
+                  <p className="text-[11px] text-blue-800 leading-relaxed">
+                    {selectedStudentPerm.status === 'APPROVED_WALI_KELAS'
+                      ? 'Izin santri telah disetujui dan siap keluar gerbang. Tidak bisa mengajukan izin baru.'
+                      : 'Santri saat ini tercatat sedang berada di luar pondok / pulang. Pengajuan izin baru hanya dapat dilakukan setelah santri kembali.'}
+                  </p>
+                </div>
               </div>
             )}
           </div>
@@ -809,13 +896,17 @@ export function CreatePermissionForm({
       <div className="pt-2">
         <Button
           type="submit"
-          disabled={isSubmitting || !timeValidation.isValid}
-          className="w-full h-12 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-900/15 cursor-pointer active:scale-[0.99] transition-all flex items-center justify-center gap-2"
+          disabled={isSubmitting || !timeValidation.isValid || !!selectedStudentPerm}
+          className="w-full h-12 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-900/15 cursor-pointer active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <Check className="w-4 h-4 stroke-[2.5]" />
           <span>
             {isSubmitting
               ? 'Memproses Permohonan...'
+              : selectedStudentPerm?.status === 'PENDING_WALI_KELAS'
+              ? 'Menunggu Persetujuan Izin Sebelumnya'
+              : selectedStudentPerm
+              ? 'Santri Sudah Memiliki Izin Aktif'
               : isAutoApproveEligible
               ? 'Terbitkan Izin Langsung (Auto-Approve)'
               : 'Kirim Permohonan Izin'}

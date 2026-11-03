@@ -211,12 +211,11 @@ export function HistoryView({
         const matchName = p.studentName.toLowerCase().includes(q);
         const matchNis = p.studentNis.includes(q);
         const matchClass = p.className.toLowerCase().includes(q);
-        const matchDorm = p.dormitory.toLowerCase().includes(q);
         const matchReason = p.reason.toLowerCase().includes(q);
         const matchApplicant = p.applicantName.toLowerCase().includes(q);
         const matchApprover = p.approvedByName ? p.approvedByName.toLowerCase().includes(q) : false;
 
-        if (!matchName && !matchNis && !matchClass && !matchDorm && !matchReason && !matchApplicant && !matchApprover) {
+        if (!matchName && !matchNis && !matchClass && !matchReason && !matchApplicant && !matchApprover) {
           return false;
         }
       }
@@ -551,9 +550,6 @@ export function HistoryView({
                           NIS: {perm.studentNis}
                         </span>
                       </div>
-                      <p className="text-[10px] text-zinc-500 truncate mt-0.5">
-                        {perm.dormitory.split('(')[0].trim()}
-                      </p>
                     </div>
                   </div>
 
@@ -730,8 +726,8 @@ export function HistoryView({
                           )}
                         </div>
                         <div>
-                          <span className="text-zinc-500 block">Kamar / Asrama:</span>
-                          <strong className="text-zinc-900 font-medium">{perm.dormitory}</strong>
+                          <span className="text-zinc-500 block">Kelas:</span>
+                          <strong className="text-zinc-900 font-medium">{perm.className}</strong>
                         </div>
                         {perm.approvedByName && (
                           <div>

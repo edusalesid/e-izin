@@ -256,10 +256,9 @@ export function KepalaAsramaView({
         const matchName = p.studentName.toLowerCase().includes(q);
         const matchNis = p.studentNis.includes(q);
         const matchClass = p.className.toLowerCase().includes(q);
-        const matchDorm = p.dormitory.toLowerCase().includes(q);
         const matchReason = p.reason.toLowerCase().includes(q);
         const matchEscort = p.escortNote ? p.escortNote.toLowerCase().includes(q) : false;
-        if (!matchName && !matchNis && !matchClass && !matchDorm && !matchReason && !matchEscort) {
+        if (!matchName && !matchNis && !matchClass && !matchReason && !matchEscort) {
           return false;
         }
       }
@@ -277,9 +276,8 @@ export function KepalaAsramaView({
         const matchName = p.studentName.toLowerCase().includes(q);
         const matchNis = p.studentNis.includes(q);
         const matchClass = p.className.toLowerCase().includes(q);
-        const matchDorm = p.dormitory.toLowerCase().includes(q);
         const matchReason = p.reason.toLowerCase().includes(q);
-        if (!matchName && !matchNis && !matchClass && !matchDorm && !matchReason) {
+        if (!matchName && !matchNis && !matchClass && !matchReason) {
           return false;
         }
       }
@@ -304,7 +302,6 @@ export function KepalaAsramaView({
           : p.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
             p.studentNis.includes(searchQuery) ||
             p.className.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            p.dormitory.toLowerCase().includes(searchQuery.toLowerCase()) ||
             p.reason.toLowerCase().includes(searchQuery.toLowerCase());
       return matchCategory && matchSearch;
     });
@@ -487,7 +484,7 @@ export function KepalaAsramaView({
                             {perm.studentName}
                           </h3>
                           <p className="text-[11px] text-zinc-500 truncate mt-0.5">
-                            {perm.className} &bull; NIS: {perm.studentNis} &bull; {perm.dormitory.split('(')[0].trim()}
+                            {perm.className} &bull; NIS: {perm.studentNis}
                           </p>
                         </div>
                       </div>
@@ -538,8 +535,8 @@ export function KepalaAsramaView({
                             <span className="text-zinc-500 font-mono text-[11px]">({perm.applicantPhone})</span>
                           </p>
                           <p className="text-zinc-600">
-                            <span className="text-zinc-500">Kamar Asrama:</span>{' '}
-                            <strong className="text-zinc-900 font-medium">{perm.dormitory}</strong>
+                            <span className="text-zinc-500">Kelas:</span>{' '}
+                            <strong className="text-zinc-900 font-medium">{perm.className}</strong>
                           </p>
 
                           {perm.applicantPhone && perm.applicantPhone !== '-' && (

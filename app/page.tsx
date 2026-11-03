@@ -715,6 +715,7 @@ export default function UnifiedMainPortalPage() {
           isOpen={isAjukanDrawerOpen}
           onClose={() => setIsAjukanDrawerOpen(false)}
           students={students}
+          permissions={permissions}
           preselectedStudent={currentStudent}
           activeRole={session.role}
           currentUser={session.user || null}

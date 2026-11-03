@@ -28,11 +28,33 @@ import { cn } from '@/lib/utils';
 
 export default function UstadzAjukanPage() {
   const router = useRouter();
-  const { session, students, users, refreshData, isLoading } = useStaff();
+  const { session, students, permissions, users, refreshData, isLoading } = useStaff();
+
+  // Santri yang pulang / sudah di approve (APPROVED_WALI_KELAS atau SEDANG_DI_LUAR) tidak muncul di daftar pengajuan
+  const availableStudents = useMemo(() => {
+    return students.filter((s) => {
+      const activePerm = permissions.find(
+        (p) =>
+          (p.studentId === s.id || (s.nis && p.studentNis === s.nis)) &&
+          (p.status === 'APPROVED_WALI_KELAS' || p.status === 'SEDANG_DI_LUAR')
+      );
+      return !activePerm;
+    });
+  }, [students, permissions]);
 
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(
-    students.length > 0 ? students[0] : null
+    availableStudents.length > 0 ? availableStudents[0] : null
   );
+
+  // Status izin santri yang sedang dipilih (jika sedang dalam tinjauan / aktif)
+  const selectedStudentPerm = useMemo(() => {
+    if (!selectedStudent) return null;
+    return permissions.find(
+      (p) =>
+        (p.studentId === selectedStudent.id || (selectedStudent.nis && p.studentNis === selectedStudent.nis)) &&
+        (p.status === 'PENDING_WALI_KELAS' || p.status === 'APPROVED_WALI_KELAS' || p.status === 'SEDANG_DI_LUAR')
+    );
+  }, [selectedStudent, permissions]);
 
   // Filter possible target approvers (Ustadz & Wali Kelas)
   const potentialApprovers = useMemo(
@@ -115,6 +137,21 @@ export default function UstadzAjukanPage() {
       setErrorMessage('Mohon pilih santri yang akan mengajukan izin.');
       return;
     }
+
+    if (selectedStudentPerm?.status === 'PENDING_WALI_KELAS') {
+      const msg = `Santri ${selectedStudent.fullName} masih memiliki izin yang sedang dalam tinjauan. Tidak bisa menambahkan izin lagi, harus menunggu persetujuan (approve).`;
+      setErrorMessage(msg);
+      toast.error('Tidak Dapat Mengajukan Izin', { description: msg });
+      return;
+    }
+
+    if (selectedStudentPerm?.status === 'APPROVED_WALI_KELAS' || selectedStudentPerm?.status === 'SEDANG_DI_LUAR') {
+      const msg = `Santri ${selectedStudent.fullName} sudah memiliki izin aktif (${selectedStudentPerm.status === 'APPROVED_WALI_KELAS' ? 'telah disetujui' : 'sedang di luar/pulang'}).`;
+      setErrorMessage(msg);
+      toast.error('Tidak Dapat Mengajukan Izin', { description: msg });
+      return;
+    }
+
     if (!reason.trim()) {
       setErrorMessage('Mohon cantumkan alasan atau keperluan izin santri.');
       return;
@@ -135,7 +172,7 @@ export default function UstadzAjukanPage() {
         studentName: selectedStudent.fullName,
         studentNis: selectedStudent.nis,
         className: selectedStudent.className,
-        dormitory: selectedStudent.dormitory,
+        dormitory: selectedStudent.dormitory || '-',
         category,
         reason: reason.trim(),
         applicantType: 'USTADZ',
@@ -190,11 +227,11 @@ export default function UstadzAjukanPage() {
   const selectedTargetUser = potentialApprovers.find((u) => u.id === targetApproverId);
 
   useEffect(() => {
-    if (!selectedStudent && students.length > 0) {
-      setSelectedStudent(students[0]);
-      setTargetApproverId(getInitialTargetApprover(students[0]));
+    if (!selectedStudent && availableStudents.length > 0) {
+      setSelectedStudent(availableStudents[0]);
+      setTargetApproverId(getInitialTargetApprover(availableStudents[0]));
     }
-  }, [students, selectedStudent]);
+  }, [availableStudents, selectedStudent]);
 
   if (isLoading) {
     return <AjukanFormSkeleton />;
@@ -269,16 +306,29 @@ export default function UstadzAjukanPage() {
 
             <StudentCombobox
               id="student-combobox-input"
-              students={students}
+              students={availableStudents}
+              permissions={permissions}
               selectedStudent={selectedStudent}
               onSelect={handleStudentSelect}
             />
 
+            {selectedStudentPerm?.status === 'PENDING_WALI_KELAS' && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 flex items-start gap-2.5 text-xs text-amber-900 shadow-2xs">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="font-bold text-amber-950">Santri Sedang Dalam Tinjauan</p>
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    Santri ini masih memiliki permohonan izin yang sedang dalam tinjauan (menunggu persetujuan). Tidak bisa menambahkan pengajuan izin baru sampai izin disetujui (approve).
+                  </p>
+                </div>
+              </div>
+            )}
+
             {selectedStudent && (
               <div className="rounded-xl bg-zinc-50 border border-zinc-200/70 p-2.5 flex items-center justify-between text-[11px] text-zinc-700">
                 <div>
-                  <span className="text-zinc-500">Asrama:</span>{' '}
-                  <strong className="text-zinc-900">{selectedStudent.dormitory}</strong>
+                  <span className="text-zinc-500">Kelas:</span>{' '}
+                  <strong className="text-zinc-900">{selectedStudent.className}</strong>
                 </div>
                 <div>
                   <span className="text-zinc-500">NIS:</span>{' '}
@@ -528,8 +578,8 @@ export default function UstadzAjukanPage() {
         <div className="pt-2">
           <button
             type="submit"
-            disabled={isSubmitting}
-            className="w-full min-h-[48px] flex items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 py-3.5 px-4 text-xs font-bold text-white shadow-md shadow-emerald-800/20 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2 transition cursor-pointer disabled:opacity-60"
+            disabled={isSubmitting || !!selectedStudentPerm}
+            className="w-full min-h-[48px] flex items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 py-3.5 px-4 text-xs font-bold text-white shadow-md shadow-emerald-800/20 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2 transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {isSubmitting ? (
               <>
@@ -538,6 +588,10 @@ export default function UstadzAjukanPage() {
                   Mengirim Permohonan ke {selectedTargetUser?.name || 'Wali Kelas'}...
                 </span>
               </>
+            ) : selectedStudentPerm?.status === 'PENDING_WALI_KELAS' ? (
+              <span>Menunggu Persetujuan Izin Sebelumnya</span>
+            ) : selectedStudentPerm ? (
+              <span>Santri Sudah Memiliki Izin Aktif</span>
             ) : (
               <>
                 <Check className="w-4 h-4 stroke-[2.5]" />

@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useId } from 'react';
-import { Student } from '@/lib/types';
+import React, { useState, useRef, useEffect, useId, useMemo } from 'react';
+import { Student, Permission } from '@/lib/types';
 import { Search, X, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface StudentComboboxProps {
   students: Student[];
+  permissions?: Permission[];
   selectedStudent: Student | null;
   onSelect: (student: Student) => void;
   disabled?: boolean;
@@ -15,6 +16,7 @@ interface StudentComboboxProps {
 
 export function StudentCombobox({
   students,
+  permissions = [],
   selectedStudent,
   onSelect,
   disabled = false,
@@ -49,12 +51,27 @@ export function StudentCombobox({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filtered = students.filter(
-    (s) =>
-      s.fullName.toLowerCase().includes(query.toLowerCase()) ||
-      s.nis.includes(query) ||
-      s.className.toLowerCase().includes(query.toLowerCase())
-  );
+  // Santri yang pulang / sudah di approve (APPROVED_WALI_KELAS atau SEDANG_DI_LUAR) tidak muncul di daftar pengajuan
+  const availableStudents = useMemo(() => {
+    if (!permissions || permissions.length === 0) return students;
+    return students.filter((s) => {
+      const activePerm = permissions.find(
+        (p) =>
+          (p.studentId === s.id || (s.nis && p.studentNis === s.nis)) &&
+          (p.status === 'APPROVED_WALI_KELAS' || p.status === 'SEDANG_DI_LUAR')
+      );
+      return !activePerm;
+    });
+  }, [students, permissions]);
+
+  const filtered = useMemo(() => {
+    return availableStudents.filter(
+      (s) =>
+        s.fullName.toLowerCase().includes(query.toLowerCase()) ||
+        s.nis.includes(query) ||
+        s.className.toLowerCase().includes(query.toLowerCase())
+    );
+  }, [availableStudents, query]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (disabled) return;
@@ -164,6 +181,12 @@ export function StudentCombobox({
             filtered.map((s, index) => {
               const isSelected = selectedStudent?.id === s.id;
               const isHighlighted = highlightedIndex === index;
+              const isPending = permissions.some(
+                (p) =>
+                  (p.studentId === s.id || (s.nis && p.studentNis === s.nis)) &&
+                  p.status === 'PENDING_WALI_KELAS'
+              );
+
               return (
                 <li
                   key={s.id}
@@ -188,14 +211,24 @@ export function StudentCombobox({
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div
                       aria-hidden="true"
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-[11px] font-bold text-emerald-800"
+                      className={cn(
+                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold",
+                        isPending ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
+                      )}
                     >
                       {s.fullName.substring(0, 2).toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs truncate font-bold text-zinc-900">{s.fullName}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-xs truncate font-bold text-zinc-900">{s.fullName}</p>
+                        {isPending && (
+                          <span className="text-[10px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded-md">
+                            Dalam Tinjauan
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-zinc-600 truncate">
-                        NIS: <span className="font-semibold">{s.nis}</span> &bull; {s.className} &bull; {s.dormitory.split('(')[0]}
+                        NIS: <span className="font-semibold">{s.nis}</span> &bull; {s.className}
                       </p>
                     </div>
                   </div>

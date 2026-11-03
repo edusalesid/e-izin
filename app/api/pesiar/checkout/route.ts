@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
         studentName: student.fullName,
         studentNis: student.nis,
         className: student.className,
-        dormitory: student.dormitory,
+        dormitory: student.dormitory || '-',
         category: 'PESIAR',
         reason: 'Pesiar Santri Asrama',
         applicantType: 'USTADZ',

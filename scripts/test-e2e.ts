@@ -41,7 +41,7 @@ async function runE2E() {
       studentName: 'Muhammad Raihan Pratama',
       studentNis: '2024101',
       className: 'X MIPA 1',
-      dormitory: 'Asrama Al-Fatih Lt. 2 (Kamar 204)',
+      dormitory: '-',
       category: 'KELUAR_SEBENTAR',
       reason: 'Uji coba integrasi Neon Postgres & Prisma ORM',
       applicantType: 'ORANG_TUA',

@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS students (
   gender TEXT NOT NULL,
   classroom_id TEXT NOT NULL,
   class_name TEXT NOT NULL,
-  dormitory TEXT NOT NULL,
+  dormitory TEXT DEFAULT '',
   parent_name TEXT NOT NULL,
   parent_phone TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS permissions (
   student_name TEXT NOT NULL,
   student_nis TEXT NOT NULL,
   class_name TEXT NOT NULL,
-  dormitory TEXT NOT NULL,
+  dormitory TEXT DEFAULT '',
   
   category TEXT NOT NULL, -- 'KELUAR_SEBENTAR' | 'PULANG_MENGINAP'
   reason TEXT NOT NULL,

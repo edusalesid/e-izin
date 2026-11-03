@@ -40,7 +40,7 @@ export interface Student {
   gender: 'L' | 'P';
   classroomId: string;
   className: string;
-  dormitory: string; // Asrama/Kamar
+  dormitory?: string; // Opsional / legacy
   parentName: string;
   parentPhone: string;
   classroom?: Classroom;
@@ -78,7 +78,7 @@ export interface Permission {
   studentName: string;
   studentNis: string;
   className: string;
-  dormitory: string;
+  dormitory?: string;
   
   category: PermissionCategory;
   reason: string;

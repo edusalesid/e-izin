@@ -301,9 +301,6 @@ export default function PermissionDetailPage() {
             <p className="text-xs text-zinc-500">
               NIS: <strong className="text-zinc-800">{permission.studentNis}</strong> &bull; Kelas: <strong className="text-zinc-800">{permission.className}</strong>
             </p>
-            <p className="text-[11px] text-zinc-500 mt-0.5">
-              Asrama: {permission.dormitory}
-            </p>
           </div>
 
           <StatusBadge status={permission.status} />

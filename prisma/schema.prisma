@@ -43,7 +43,7 @@ model Student {
   gender      String
   classroomId String       @map("classroom_id")
   className   String       @map("class_name")
-  dormitory   String
+  dormitory   String?      @default("")
   parentName  String       @map("parent_name")
   parentPhone String       @map("parent_phone")
   createdAt   DateTime     @default(now()) @map("created_at")
@@ -60,7 +60,7 @@ model Permission {
   studentName         String          @map("student_name")
   studentNis          String          @map("student_nis")
   className           String          @map("class_name")
-  dormitory           String
+  dormitory           String?         @default("")
   
   category            String
   reason              String

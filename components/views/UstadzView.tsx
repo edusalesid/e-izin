@@ -67,6 +67,7 @@ export function UstadzView({
           </div>
           <CreatePermissionForm
             students={students}
+            permissions={permissions}
             activeRole="USTADZ_UMUM"
             currentUser={currentUser}
             onSuccess={() => {

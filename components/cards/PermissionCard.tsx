@@ -157,7 +157,7 @@ export function PermissionCard({
               {permission.studentName}
             </h3>
             <p className="text-[11px] text-zinc-500 truncate mt-0.5">
-              {permission.className} &bull; NIS: {permission.studentNis} &bull; {permission.dormitory.split('(')[0].trim()}
+              {permission.className} &bull; NIS: {permission.studentNis}
             </p>
           </div>
         </div>

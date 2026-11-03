@@ -75,6 +75,7 @@ export function ParentPortalView({
           </div>
           <CreatePermissionForm
             students={[student]}
+            permissions={permissions}
             preselectedStudent={student}
             activeRole="ORANG_TUA"
             currentUser={null}

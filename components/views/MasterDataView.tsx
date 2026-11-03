@@ -38,7 +38,6 @@ export function MasterDataView({
   const [uploadStatus, setUploadStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [query, setQuery] = useState('');
   const [classFilter, setClassFilter] = useState('ALL');
-  const [dormFilter, setDormFilter] = useState('ALL');
 
   const uniqueClasses = useMemo(() => {
     const set = new Set<string>();
@@ -46,21 +45,11 @@ export function MasterDataView({
     return Array.from(set).sort();
   }, [students]);
 
-  const uniqueDorms = useMemo(() => {
-    const set = new Set<string>();
-    students.forEach((s) => {
-      if (s.dormitory) {
-        set.add(s.dormitory.split('(')[0].trim());
-      }
-    });
-    return Array.from(set).sort();
-  }, [students]);
-
   const handleDownloadTemplate = () => {
     const csvContent =
-      'nis,full_name,gender,class_name,dormitory,parent_name,parent_phone\n' +
-      '2024103,Ahmad Zaki Fauzan,L,X MIPA 1,Asrama Al-Fatih Lt. 2 (Kamar 205),Bpk. Hendra Fauzan,081299887766\n' +
-      '2024104,Fathir Ramadhan,L,XI MIPA 1,Asrama Shalahuddin Lt. 1 (Kamar 101),Ibu Nurul Hidayah,081377889900\n';
+      'nis,full_name,gender,class_name,parent_name,parent_phone\n' +
+      '2024103,Ahmad Zaki Fauzan,L,X MIPA 1,Bpk. Hendra Fauzan,081299887766\n' +
+      '2024104,Fathir Ramadhan,L,XI MIPA 1,Ibu Nurul Hidayah,081377889900\n';
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -92,7 +81,7 @@ export function MasterDataView({
             gender: (row.gender || row.Gender || 'L').toUpperCase() as 'L' | 'P',
             className: String(row.class_name || row.kelas || row.Kelas || 'X MIPA 1').trim(),
             classroomId: 'c-x-ipa-1',
-            dormitory: String(row.dormitory || row.asrama || row.Asrama || 'Asrama Al-Fatih').trim(),
+            dormitory: String(row.dormitory || row.asrama || row.Asrama || '-').trim(),
             parentName: String(row.parent_name || row.wali || row.nama_ortu || 'Wali Santri').trim(),
             parentPhone: String(row.parent_phone || row.hp_ortu || row.no_hp || '081234567890').trim(),
           })).filter((s) => s.nis && s.fullName);
@@ -144,29 +133,26 @@ export function MasterDataView({
   const filtered = useMemo(() => {
     return students.filter((s) => {
       if (classFilter !== 'ALL' && s.className !== classFilter) return false;
-      if (dormFilter !== 'ALL' && !s.dormitory.toLowerCase().includes(dormFilter.toLowerCase())) return false;
       if (query.trim()) {
         const q = query.toLowerCase();
         const matchName = s.fullName.toLowerCase().includes(q);
         const matchNis = s.nis.includes(q);
         const matchClass = s.className.toLowerCase().includes(q);
-        const matchDorm = s.dormitory.toLowerCase().includes(q);
         const matchParent = s.parentName.toLowerCase().includes(q);
         const matchPhone = s.parentPhone.includes(q);
-        if (!matchName && !matchNis && !matchClass && !matchDorm && !matchParent && !matchPhone) {
+        if (!matchName && !matchNis && !matchClass && !matchParent && !matchPhone) {
           return false;
         }
       }
       return true;
     });
-  }, [students, classFilter, dormFilter, query]);
+  }, [students, classFilter, query]);
 
-  const isFilterActive = query.trim() !== '' || classFilter !== 'ALL' || dormFilter !== 'ALL';
+  const isFilterActive = query.trim() !== '' || classFilter !== 'ALL';
 
   const handleResetFilter = () => {
     setQuery('');
     setClassFilter('ALL');
-    setDormFilter('ALL');
   };
 
   return (
@@ -207,7 +193,7 @@ export function MasterDataView({
                 Pilih Berkas CSV Santri
               </p>
               <p className="text-[11px] text-zinc-500 max-w-xs mx-auto mt-0.5">
-                Format kolom: nis, full_name, gender, class_name, dormitory, parent_name, parent_phone
+                Format kolom: nis, full_name, gender, class_name, parent_name, parent_phone
               </p>
 
               <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2">
@@ -314,21 +300,6 @@ export function MasterDataView({
                   ))}
                 </select>
               )}
-
-              {uniqueDorms.length > 0 && (
-                <select
-                  value={dormFilter}
-                  onChange={(e) => setDormFilter(e.target.value)}
-                  className="h-10 px-3 bg-white border border-zinc-200 text-xs rounded-xl text-zinc-700 font-medium focus:outline-emerald-700 cursor-pointer shadow-2xs shrink-0"
-                >
-                  <option value="ALL">Semua Asrama ({uniqueDorms.length})</option>
-                  {uniqueDorms.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-              )}
             </div>
           </div>
         </div>
@@ -354,31 +325,31 @@ export function MasterDataView({
             )}
           </Card>
         ) : (
-          <div className="space-y-2 max-h-96 overflow-y-auto pr-0.5">
+          <div className="space-y-2.5">
             {filtered.map((s) => (
               <Card
                 key={s.id}
-                className="p-3 border-zinc-200/90 hover:border-zinc-300 bg-white shadow-2xs rounded-xl flex items-center justify-between gap-3 transition-colors"
+                className="p-3 border-zinc-200/90 hover:border-zinc-300 bg-white shadow-2xs rounded-xl flex items-start justify-between gap-2.5 transition-colors"
               >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="h-9 w-9 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-800 font-bold text-xs flex items-center justify-center shrink-0">
+                <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                  <div className="h-9 w-9 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-800 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
                     {s.fullName.substring(0, 2).toUpperCase()}
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <p className="text-xs font-bold text-zinc-900 truncate">{s.fullName}</p>
-                      <span className="text-[10px] font-semibold text-zinc-600 bg-zinc-100 px-1.5 py-0.2 rounded">
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-bold text-zinc-900 leading-snug line-clamp-2">
+                        {s.fullName}
+                      </p>
+                      <Badge variant="outline" className="text-[10px] shrink-0 font-semibold text-emerald-800 bg-emerald-50 border-emerald-200">
                         {s.className}
-                      </span>
+                      </Badge>
                     </div>
-                    <p className="text-[11px] text-zinc-500 truncate mt-0.5">
-                      NIS: <span className="font-mono text-zinc-700">{s.nis}</span> &bull; Wali: {s.parentName} ({s.parentPhone})
+                    <p className="text-[11px] text-zinc-500 leading-relaxed">
+                      NIS: <span className="font-mono text-zinc-700 font-medium">{s.nis}</span> &bull; Wali: <span className="text-zinc-700 font-medium">{s.parentName}</span>
+                      {s.parentPhone && <span className="text-zinc-500 ml-1">({s.parentPhone})</span>}
                     </p>
                   </div>
                 </div>
-                <Badge variant="approved" className="text-[10px] shrink-0 font-medium">
-                  {s.dormitory.split('(')[0].trim()}
-                </Badge>
               </Card>
             ))}
           </div>
