@@ -77,25 +77,13 @@ export function BottomNav({
         ];
 
       case 'SUPER_ADMIN':
-        return [
-          { key: 'APPROVAL', label: 'Persetujuan', icon: CheckSquare, badge: pendingCount },
-          { key: 'PESIAR', label: 'Pesiar', icon: CalendarClock },
-          { key: 'MONITOR', label: 'Live Monitor', icon: Activity, badge: outsideCount },
-          { key: 'TERLAMBAT', label: 'Keterlambatan', icon: AlertTriangle, badge: lateCount },
-          { key: 'MASTER', label: 'Data Santri', icon: Database },
-          { key: 'RIWAYAT', label: 'Semua Izin', icon: History },
-          { key: 'PROFIL', label: 'Profil Akun', icon: User },
-        ];
-
       case 'KEPALA_ASRAMA':
         return [
           { key: 'APPROVAL', label: 'Persetujuan', icon: CheckSquare, badge: pendingCount },
-          { key: 'PESIAR', label: 'Pesiar', icon: CalendarClock },
-          { key: 'MONITOR', label: 'Live Monitor', icon: Activity, badge: outsideCount },
-          { key: 'TERLAMBAT', label: 'Keterlambatan', icon: AlertTriangle, badge: lateCount },
+          { key: 'MONITOR', label: 'Monitoring', icon: Activity, badge: outsideCount },
           { key: 'MASTER', label: 'Data Santri', icon: Database },
           { key: 'RIWAYAT', label: 'Semua Izin', icon: History },
-          { key: 'PROFIL', label: 'Profil Akun', icon: User },
+          { key: 'PROFIL', label: 'Profil', icon: User },
         ];
 
       case 'USTADZ_UMUM':
@@ -117,7 +105,11 @@ export function BottomNav({
       <div className="mx-auto flex max-w-md items-center justify-around px-1 py-1">
         {tabs.map((tab) => {
           const Icon = tab.icon;
-          const isActive = activeTab === tab.key;
+          const isActive =
+            activeTab === tab.key ||
+            ((activeRole === 'SUPER_ADMIN' || activeRole === 'KEPALA_ASRAMA') &&
+              ((tab.key === 'APPROVAL' && activeTab === 'PESIAR') ||
+                (tab.key === 'MONITOR' && activeTab === 'TERLAMBAT')));
           const hasBadge = Boolean(tab.badge && tab.badge > 0);
 
           return (
@@ -125,7 +117,7 @@ export function BottomNav({
               key={tab.key}
               onClick={() => onTabChange(tab.key as TabKey)}
               className={cn(
-                'relative flex flex-col items-center justify-center py-1.5 px-2 rounded-lg transition-colors cursor-pointer select-none min-h-[48px] min-w-[52px]',
+                'relative flex flex-col items-center justify-center py-1.5 px-2 rounded-lg transition-colors cursor-pointer select-none min-h-[48px] min-w-[56px] flex-1 max-w-[84px]',
                 isActive
                   ? 'text-emerald-800 font-bold'
                   : 'text-zinc-500 hover:text-zinc-800 font-medium'
@@ -139,7 +131,7 @@ export function BottomNav({
                   </span>
                 )}
               </div>
-              <span className="mt-1 text-[10px] tracking-tight leading-none truncate max-w-[64px]">
+              <span className="mt-1 text-[10px] tracking-tight leading-none truncate max-w-[72px]">
                 {tab.label}
               </span>
             </button>

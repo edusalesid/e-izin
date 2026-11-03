@@ -1,10 +1,17 @@
 'use client';
 
+import { useEffect } from 'react';
 import { Toaster as Sonner } from 'sonner';
+import { initToastPwaBridge } from '@/lib/notifications';
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 export function Toaster({ ...props }: ToasterProps) {
+  useEffect(() => {
+    // Aktifkan bridge otomatis: seluruh toast Sonner akan langsung diteruskan ke Web/PWA Notification
+    initToastPwaBridge();
+  }, []);
+
   return (
     <Sonner
       className="toaster group"

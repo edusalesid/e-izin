@@ -1,5 +1,5 @@
 // Service Worker for E-Izin Santri SMAIT Ihsanul Fikri PWA
-const CACHE_NAME = 'e-izin-pwa-v4';
+const CACHE_NAME = 'e-izin-pwa-v5';
 
 const STATIC_ASSETS = [
   '/manifest.json',
@@ -41,8 +41,12 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // Skip API calls from caching completely
-  if (url.pathname.startsWith('/api/')) {
+  // Skip API calls, webpack-hmr, and dev updates from caching completely
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/_next/webpack-hmr') ||
+    url.pathname.includes('hot-update')
+  ) {
     return;
   }
 
@@ -111,4 +115,30 @@ self.addEventListener('notificationclick', (event) => {
       }
     })
   );
+});
+
+// PWA Push Notification handler (Web Push Protocol / Server Push)
+self.addEventListener('push', (event) => {
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch {
+      data = { title: event.data.text() };
+    }
+  }
+
+  const title = data.title || 'E-Izin Santri';
+  const options = {
+    body: data.body || 'Ada pembaruan status izin santri.',
+    icon: data.icon || '/icon-192.png',
+    badge: data.badge || '/favicon-32.png',
+    vibrate: [200, 100, 200],
+    data: {
+      url: data.url || '/',
+      timestamp: Date.now(),
+    },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
 });

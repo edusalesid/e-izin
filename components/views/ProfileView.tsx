@@ -20,6 +20,8 @@ import {
   Calendar,
   MessageCircle,
   ExternalLink,
+  Bell,
+  BellRing,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +31,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { cn, formatDateTime } from '@/lib/utils';
 import { toast } from 'sonner';
+import { requestNotificationPermission } from '@/lib/notifications';
 
 interface ProfileViewProps {
   session: AuthSession;
@@ -64,6 +67,43 @@ export function ProfileView({
   const [isUpdatingContact, setIsUpdatingContact] = useState(false);
   const [securityMessage, setSecurityMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [contactMessage, setContactMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Status dan pengujian Web / PWA Notification
+  const [notifStatus, setNotifStatus] = useState<string>('default');
+  const [isTestingNotif, setIsTestingNotif] = useState(false);
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotifStatus(Notification.permission);
+    }
+  }, []);
+
+  const handleTestNotification = async () => {
+    setIsTestingNotif(true);
+    try {
+      const res = await requestNotificationPermission();
+      setNotifStatus(res);
+      if (res === 'granted') {
+        toast.success('Notifikasi Berfungsi Normal! 🔔', {
+          description: 'Pemberitahuan sistem telah terhubung ke aplikasi smartphone Anda.',
+        });
+      } else if (res === 'denied') {
+        toast.error('Izin Notifikasi Diblokir', {
+          description: 'Buka pengaturan izin browser/aplikasi di smartphone untuk mengizinkan notifikasi.',
+        });
+      } else {
+        toast.info('Izin Notifikasi Belum Diberikan', {
+          description: 'Silakan pilih "Izinkan" saat browser meminta konfirmasi.',
+        });
+      }
+    } catch {
+      toast.error('Gagal Menguji Notifikasi', {
+        description: 'Terjadi kendala saat meminta perizinan browser.',
+      });
+    } finally {
+      setIsTestingNotif(false);
+    }
+  };
 
   // Inisial avatar akun
   const getInitials = () => {
@@ -658,7 +698,63 @@ export function ProfileView({
         </CardContent>
       </Card>
 
-      {/* 7. Tindakan Pasang PWA & Keluar */}
+      {/* 7. Pengaturan & Uji Notifikasi Web / HP */}
+      <Card className="border border-zinc-200 shadow-xs bg-white">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-700">
+                <Bell className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-zinc-900">Notifikasi Web & Smartphone</p>
+                <p className="text-[11px] text-zinc-500">
+                  {notifStatus === 'granted'
+                    ? 'Status: Aktif & Terhubung'
+                    : notifStatus === 'denied'
+                    ? 'Status: Diblokir oleh Browser'
+                    : 'Status: Belum Diaktifkan'}
+                </p>
+              </div>
+            </div>
+            <Badge
+              variant="outline"
+              className={cn(
+                'text-[10px] font-semibold',
+                notifStatus === 'granted'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : notifStatus === 'denied'
+                  ? 'bg-rose-50 text-rose-800 border-rose-200'
+                  : 'bg-amber-50 text-amber-800 border-amber-200'
+              )}
+            >
+              {notifStatus === 'granted' ? 'Aktif' : notifStatus === 'denied' ? 'Diblokir' : 'Nonaktif'}
+            </Badge>
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleTestNotification}
+            disabled={isTestingNotif}
+            className="w-full min-h-[38px] justify-center text-xs font-medium text-emerald-800 border-emerald-200 bg-emerald-50/40 hover:bg-emerald-100/60 cursor-pointer"
+          >
+            {isTestingNotif ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                <span>Meminta Izin & Menguji...</span>
+              </>
+            ) : (
+              <>
+                <BellRing className="w-3.5 h-3.5 mr-1.5 text-emerald-700" />
+                <span>{notifStatus === 'granted' ? 'Uji Notifikasi Web / HP' : 'Aktifkan & Uji Notifikasi'}</span>
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* 8. Tindakan Pasang PWA & Keluar */}
       <div className="space-y-2 pt-1">
         {onOpenInstall && !isInstalled && (
           <Button

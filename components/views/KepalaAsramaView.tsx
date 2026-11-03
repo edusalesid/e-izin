@@ -27,6 +27,7 @@ import {
   Settings2,
   Save,
   CheckCircle2,
+  CalendarClock,
 } from 'lucide-react';
 import { TabKey } from '../BottomNav';
 import { Card } from '@/components/ui/card';
@@ -206,6 +207,28 @@ export function KepalaAsramaView({
     );
   }, [permissions]);
 
+  // Sub-tab internal untuk penggabungan fitur antislop
+  const [approvalSubTab, setApprovalSubTab] = useState<'IZIN' | 'PESIAR'>(
+    activeTab === 'PESIAR' ? 'PESIAR' : 'IZIN'
+  );
+  const [monitorSubTab, setMonitorSubTab] = useState<'OUTSIDE' | 'LATE'>(
+    activeTab === 'TERLAMBAT' ? 'LATE' : 'OUTSIDE'
+  );
+
+  useEffect(() => {
+    if (activeTab === 'PESIAR') {
+      setApprovalSubTab('PESIAR');
+    } else if (activeTab === 'APPROVAL') {
+      setApprovalSubTab('IZIN');
+    }
+
+    if (activeTab === 'TERLAMBAT') {
+      setMonitorSubTab('LATE');
+    } else if (activeTab === 'MONITOR') {
+      setMonitorSubTab('OUTSIDE');
+    }
+  }, [activeTab]);
+
   // Filter & Search State di antrean persetujuan
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'ALL' | 'KELUAR_SEBENTAR' | 'PULANG_MENGINAP'>('ALL');
@@ -261,9 +284,46 @@ export function KepalaAsramaView({
 
   return (
     <div className="space-y-3.5 pb-8">
-      {/* Tab: APPROVAL (Persetujuan Izin Santri oleh Kepala Asrama) */}
-      {activeTab === 'APPROVAL' && (
+      {/* Tab: APPROVAL & PESIAR (Pusat Perizinan & Persetujuan Santri) */}
+      {(activeTab === 'APPROVAL' || activeTab === 'PESIAR') && (
         <div className="space-y-3">
+          {/* Segmented Sub-Tab Switcher: Izin Santri vs Pesiar */}
+          <div className="grid grid-cols-2 p-1 bg-zinc-200/80 rounded-xl gap-1">
+            <button
+              type="button"
+              onClick={() => setApprovalSubTab('IZIN')}
+              className={cn(
+                'flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer min-h-[44px]',
+                approvalSubTab === 'IZIN'
+                  ? 'bg-white text-emerald-950 shadow-xs'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              )}
+            >
+              <CheckSquare className="w-4 h-4 text-emerald-700" />
+              <span>Izin Santri</span>
+              {pendingList.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold leading-none">
+                  {pendingList.length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setApprovalSubTab('PESIAR')}
+              className={cn(
+                'flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer min-h-[44px]',
+                approvalSubTab === 'PESIAR'
+                  ? 'bg-white text-emerald-950 shadow-xs'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              )}
+            >
+              <CalendarClock className="w-4 h-4 text-emerald-700" />
+              <span>Jadwal & Pesiar</span>
+            </button>
+          </div>
+
+          {approvalSubTab === 'IZIN' ? (
+            <div className="space-y-3">
           {/* Header Kepala Asrama Ma'had */}
           <div className="rounded-xl bg-gradient-to-r from-emerald-800 to-emerald-950 p-3.5 sm:p-4 text-white shadow-xs">
             <div className="flex items-center justify-between gap-3">
@@ -605,23 +665,62 @@ export function KepalaAsramaView({
               })}
             </div>
           )}
+            </div>
+          ) : (
+            <PesiarView
+              currentUser={currentUser}
+              students={students}
+              permissions={permissions}
+              onRefresh={onRefresh}
+              activeRole="KEPALA_ASRAMA"
+            />
+          )}
         </div>
       )}
 
-      {/* Tab: PESIAR (Manajemen & Quick Approval Pesiar) */}
-      {activeTab === 'PESIAR' && (
-        <PesiarView
-          currentUser={currentUser}
-          students={students}
-          permissions={permissions}
-          onRefresh={onRefresh}
-          activeRole="KEPALA_ASRAMA"
-        />
-      )}
-
-      {/* Tab: MONITOR (Live Monitor Santri di Luar) */}
-      {activeTab === 'MONITOR' && (
+      {/* Tab: MONITOR & TERLAMBAT (Pusat Monitoring & Pengawasan Santri di Luar) */}
+      {(activeTab === 'MONITOR' || activeTab === 'TERLAMBAT') && (
         <div className="space-y-3">
+          {/* Segmented Sub-Tab Switcher: Santri di Luar vs Keterlambatan */}
+          <div className="grid grid-cols-2 p-1 bg-zinc-200/80 rounded-xl gap-1">
+            <button
+              type="button"
+              onClick={() => setMonitorSubTab('OUTSIDE')}
+              className={cn(
+                'flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer min-h-[44px]',
+                monitorSubTab === 'OUTSIDE'
+                  ? 'bg-white text-emerald-950 shadow-xs'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              )}
+            >
+              <Activity className="w-4 h-4 text-emerald-700" />
+              <span>Santri di Luar</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold leading-none">
+                {currentlyOutside.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMonitorSubTab('LATE')}
+              className={cn(
+                'flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer min-h-[44px]',
+                monitorSubTab === 'LATE'
+                  ? 'bg-white text-rose-950 shadow-xs'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              )}
+            >
+              <AlertTriangle className={cn('w-4 h-4', latePermissions.length > 0 ? 'text-rose-600' : 'text-zinc-500')} />
+              <span>Keterlambatan & Denda</span>
+              {latePermissions.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold leading-none">
+                  {latePermissions.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {monitorSubTab === 'OUTSIDE' ? (
+            <div className="space-y-3">
           <div className="rounded-xl bg-gradient-to-r from-emerald-800 to-emerald-950 p-3.5 sm:p-4 text-white shadow-xs">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -680,12 +779,9 @@ export function KepalaAsramaView({
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {/* Tab: TERLAMBAT */}
-      {activeTab === 'TERLAMBAT' && (
-        <div className="space-y-3">
+            </div>
+          ) : (
+            <div className="space-y-3">
           {/* Panel Konfigurasi Aturan Denda & Toleransi */}
           <Card className="border border-emerald-200/90 bg-emerald-50/50 rounded-xl overflow-hidden shadow-xs">
             <div
@@ -867,6 +963,8 @@ export function KepalaAsramaView({
               {latePermissions.map((perm) => (
                 <PermissionCard key={perm.id} permission={perm} activeRole="KEPALA_ASRAMA" onCheckIn={onCheckIn} />
               ))}
+            </div>
+          )}
             </div>
           )}
         </div>

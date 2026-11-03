@@ -30,23 +30,14 @@ export function usePWAInstall() {
     }
 
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator && process.env.NODE_ENV !== 'test') {
-      if (process.env.NODE_ENV === 'production') {
-        navigator.serviceWorker
-          .register('/sw.js')
-          .then((reg) => {
-            console.log('Service Worker registered with scope:', reg.scope);
-          })
-          .catch((err) => {
-            console.warn('Service Worker registration failed:', err);
-          });
-      } else {
-        // Unregister service worker in development to prevent stale chunk caching issues
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          for (const reg of registrations) {
-            reg.unregister();
-          }
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then((reg) => {
+          console.log('Service Worker registered with scope:', reg.scope);
+        })
+        .catch((err) => {
+          console.warn('Service Worker registration failed:', err);
         });
-      }
     }
 
     const handleBeforeInstallPrompt = (e: Event) => {
