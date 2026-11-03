@@ -1,0 +1,147 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id          String      @id @default(cuid())
+  username    String      @unique
+  name        String
+  role        String
+  phone       String?
+  pin         String?
+  classroomId String?     @map("classroom_id")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  classrooms  Classroom[]
+
+  @@map("users")
+}
+
+model Classroom {
+  id             String    @id @default(cuid())
+  name           String
+  waliKelasId    String    @map("wali_kelas_id")
+  waliKelasName  String    @map("wali_kelas_name")
+  waliKelasPhone String?   @map("wali_kelas_phone")
+
+  waliKelas      User?     @relation(fields: [waliKelasId], references: [id])
+  students       Student[]
+
+  @@map("classrooms")
+}
+
+model Student {
+  id          String       @id @default(cuid())
+  nis         String       @unique
+  fullName    String       @map("full_name")
+  gender      String
+  classroomId String       @map("classroom_id")
+  className   String       @map("class_name")
+  dormitory   String
+  parentName  String       @map("parent_name")
+  parentPhone String       @map("parent_phone")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  classroom   Classroom?   @relation(fields: [classroomId], references: [id])
+  permissions Permission[]
+
+  @@map("students")
+}
+
+model Permission {
+  id                  String          @id @default(cuid())
+  studentId           String          @map("student_id")
+  studentName         String          @map("student_name")
+  studentNis          String          @map("student_nis")
+  className           String          @map("class_name")
+  dormitory           String
+  
+  category            String
+  reason              String
+  
+  applicantType       String          @map("applicant_type")
+  applicantId         String?         @map("applicant_id")
+  applicantName       String          @map("applicant_name")
+  applicantPhone      String          @map("applicant_phone")
+
+  targetApproverId    String?         @map("target_approver_id")
+  targetApproverName  String?         @map("target_approver_name")
+  
+  escortType          String          @map("escort_type")
+  escortNote          String?         @map("escort_note")
+  attachmentUrl       String?         @map("attachment_url")
+  
+  plannedDeparture    String          @map("planned_departure")
+  plannedReturn       String          @map("planned_return")
+  actualDeparture     String?         @map("actual_departure")
+  actualReturn        String?         @map("actual_return")
+  
+  status              String
+  rejectionReason     String?         @map("rejection_reason")
+  
+  approvedById        String?         @map("approved_by_id")
+  approvedByName      String?         @map("approved_by_name")
+  approvedAt          String?         @map("approved_at")
+  
+  satpamDepartureId   String?         @map("satpam_departure_id")
+  satpamDepartureName String?         @map("satpam_departure_name")
+  
+  satpamReturnId      String?         @map("satpam_return_id")
+  satpamReturnName    String?         @map("satpam_return_name")
+  
+  lateDurationMinutes Int?            @default(0) @map("late_duration_minutes")
+  lateFineAmount      Int?            @default(0) @map("late_fine_amount")
+  lateFineStatus      String?         @default("UNPAID") @map("late_fine_status")
+  
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @default(now()) @updatedAt @map("updated_at")
+
+  student             Student?        @relation(fields: [studentId], references: [id])
+  logs                PermissionLog[]
+
+  @@map("permissions")
+}
+
+model PermissionLog {
+  id           String     @id @default(cuid())
+  permissionId String     @map("permission_id")
+  action       String
+  actorName    String     @map("actor_name")
+  actorRole    String     @map("actor_role")
+  note         String?
+  timestamp    DateTime   @default(now())
+
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@map("permission_logs")
+}
+
+model PesiarSchedule {
+  id            String   @id @default(cuid())
+  date          String   @unique
+  startTime     String   @default("08:00") @map("start_time")
+  returnTime    String   @default("17:00") @map("return_time")
+  isActive      Boolean  @default(true) @map("is_active")
+  description   String?  @default("Pesiar Santri")
+  createdById   String?  @map("created_by_id")
+  createdByName String?  @map("created_by_name")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("pesiar_schedules")
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}

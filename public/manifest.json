@@ -1,0 +1,32 @@
+{
+  "id": "/",
+  "name": "E-Izin Santri — SMAIT Ihsanul Fikri",
+  "short_name": "E-Izin IF",
+  "description": "Sistem perizinan santri terpadu SMAIT Ihsanul Fikri untuk orang tua, ustadz, wali kelas, kepala asrama, dan satpam gerbang.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f4f5",
+  "theme_color": "#047857",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
