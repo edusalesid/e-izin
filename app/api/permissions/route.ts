@@ -131,13 +131,17 @@ export async function POST(request: NextRequest) {
     const approvedByName = isAutoApprove ? (body.applicantName || classroomWaliName) : null;
     const approvedAt = isAutoApprove ? new Date().toISOString() : null;
 
-    const targetApproverId = isAutoApprove ? null : (classroomWaliId || body.targetApproverId || null);
-    const targetApproverName = isAutoApprove ? null : (classroomWaliName || body.targetApproverName || 'Wali Kelas & Kepala Asrama');
+    // Prioritaskan targetApproverId yang dipilih secara eksplisit oleh pemohon (misal memilih Anton)
+    // Jika tidak ada target spesifik, gunakan wali kelas santri tersebut
+    const targetApproverId = isAutoApprove ? null : (body.targetApproverId || classroomWaliId || null);
+    const targetApproverName = isAutoApprove
+      ? null
+      : (body.targetApproverName || (classroomWaliName ? `${classroomWaliName} & Kepala Asrama` : 'Wali Kelas & Kepala Asrama'));
 
     const submitNote = isAutoApprove
       ? autoApproveNote
-      : classroomWaliName
-      ? `Pengajuan izin baru diajukan oleh ${body.applicantName || 'Ustadz'}. Menunggu persetujuan Wali Kelas (${classroomWaliName}) atau Kepala Asrama.`
+      : targetApproverName
+      ? `Pengajuan izin baru diajukan oleh ${body.applicantName || 'Ustadz'}. Menunggu persetujuan ${targetApproverName}.`
       : 'Pengajuan izin baru. Menunggu persetujuan Wali Kelas atau Kepala Asrama.';
 
     const created = await prisma.permission.create({
@@ -195,14 +199,20 @@ export async function POST(request: NextRequest) {
         }).catch(() => {});
       } else {
         const targetRoles = ['KEPALA_ASRAMA', 'SUPER_ADMIN'];
-        if (!targetApproverId) targetRoles.push('WALI_KELAS');
+        // Kumpulkan semua ID approver: approver yang dipilih pemohon (misal Anton) dan/atau wali kelas
+        const candidateApproverIds = [body.targetApproverId, targetApproverId, classroomWaliId].filter(Boolean) as string[];
+        const uniqueApproverIds = Array.from(new Set(candidateApproverIds));
+
+        if (uniqueApproverIds.length === 0) {
+          targetRoles.push('WALI_KELAS');
+        }
 
         sendTargetedPush({
           title: 'Pengajuan Izin Santri Baru 📝',
           body: `${studentName} (${className}) mengajukan izin: ${body.reason}`,
           url: '/',
         }, {
-          userIds: targetApproverId ? [targetApproverId] : undefined,
+          userIds: uniqueApproverIds.length > 0 ? uniqueApproverIds : undefined,
           roles: targetRoles,
         }).catch(() => {});
       }
@@ -320,12 +330,15 @@ export async function PATCH(request: NextRequest) {
     // Kirim Web Push Notification antar-perangkat sesuai aksi pembaruan status
     try {
       if (status === 'APPROVED_WALI_KELAS') {
-        // 1. Beritahu Wali Santri
+        const applicantUserIds = existing.applicantId ? [existing.applicantId] : [];
+
+        // 1. Beritahu Pemohon (Ustadz pemohon maupun Wali Santri)
         sendTargetedPush({
           title: 'Izin Santri Disetujui ✅',
           body: `Alhamdulillah, izin ${existing.studentName} (${existing.className}) telah disetujui oleh ${actorName}.`,
           url: '/',
         }, {
+          userIds: applicantUserIds.length > 0 ? applicantUserIds : undefined,
           studentNisList: [existing.studentNis],
         }).catch(() => {});
 
@@ -338,12 +351,15 @@ export async function PATCH(request: NextRequest) {
           roles: ['SATPAM'],
         }).catch(() => {});
       } else if (status === 'REJECTED') {
-        // Beritahu Wali Santri
+        const applicantUserIds = existing.applicantId ? [existing.applicantId] : [];
+
+        // Beritahu Pemohon (Ustadz pemohon maupun Wali Santri)
         sendTargetedPush({
           title: 'Pengajuan Izin Belum Disetujui ❌',
           body: `Izin untuk ${existing.studentName} belum disetujui: ${rejectionReason || 'Silakan hubungi pihak sekolah/asrama.'}`,
           url: '/',
         }, {
+          userIds: applicantUserIds.length > 0 ? applicantUserIds : undefined,
           studentNisList: [existing.studentNis],
         }).catch(() => {});
       } else if (status === 'SEDANG_DI_LUAR') {
