@@ -3,7 +3,13 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Permission, DigitalSignatureData } from '@/lib/types';
-import { formatDateTime, formatDateOnly } from '@/lib/utils';
+import {
+  formatDateTimeWIB,
+  formatDateOnlyWIB,
+  formatNomorSurat,
+  getPermissionCategoryLabel,
+  getEscortTypeLabel,
+} from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -26,6 +32,7 @@ export function SuratIzinPreviewModal({
   permission,
 }: SuratIzinPreviewModalProps) {
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [verifyUrl, setVerifyUrl] = useState<string>('');
   const [signatureData, setSignatureData] = useState<DigitalSignatureData | null>(null);
   const [isPreparingPrint, setIsPreparingPrint] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -50,29 +57,40 @@ export function SuratIzinPreviewModal({
   }, [isOpen]);
 
   useEffect(() => {
-    if (permission) {
-      const qrData = JSON.stringify({
-        doc: 'SURAT_IZIN_SMAIT_IF',
-        id: permission.id,
-        nis: permission.studentNis,
-        nama: permission.studentName,
-        kelas: permission.className,
-        status: permission.status,
-        disetujui: permission.approvedByName || 'Pihak Sekolah',
-        waktu: permission.approvedAt || permission.createdAt,
-      });
-
-      QRCode.toDataURL(qrData, {
-        margin: 1,
-        width: 130,
-        color: {
-          dark: '#1e293b',
-          light: '#ffffff',
-        },
-      })
-        .then((url) => setQrCodeUrl(url))
-        .catch((err) => console.error('Gagal generate QR Code:', err));
+    if (!permission) {
+      setQrCodeUrl('');
+      setVerifyUrl('');
+      return;
     }
+
+    const configuredBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, '');
+    const origin =
+      configuredBaseUrl ||
+      (typeof window !== 'undefined' ? window.location.origin : '');
+    const nextVerifyUrl = origin
+      ? `${origin}/verifikasi/${permission.id}`
+      : `/verifikasi/${permission.id}`;
+
+    setVerifyUrl(nextVerifyUrl);
+
+    let cancelled = false;
+    QRCode.toDataURL(nextVerifyUrl, {
+      margin: 1,
+      width: 160,
+      errorCorrectionLevel: 'M',
+      color: {
+        dark: '#1e293b',
+        light: '#ffffff',
+      },
+    })
+      .then((url) => {
+        if (!cancelled) setQrCodeUrl(url);
+      })
+      .catch((err) => console.error('Gagal generate QR Code:', err));
+
+    return () => {
+      cancelled = true;
+    };
   }, [permission]);
 
   if (!permission) return null;
@@ -145,26 +163,9 @@ export function SuratIzinPreviewModal({
     }
   };
 
-  const createdYear = new Date(permission.createdAt).getFullYear();
-  const createdMonth = String(new Date(permission.createdAt).getMonth() + 1).padStart(2, '0');
-  const shortId = permission.id.slice(-6).toUpperCase();
-  const nomorSurat = `SI-IF/${createdYear}/${createdMonth}/${shortId}`;
-
-  const categoryLabel =
-    permission.category === 'KELUAR_SEBENTAR'
-      ? 'Izin Keluar Sebentar (Tidak Menginap)'
-      : permission.category === 'PESIAR'
-      ? 'Izin Pesiar Terjadwal'
-      : 'Izin Pulang Menginap ke Rumah';
-
-  const escortLabels: Record<string, string> = {
-    ORANG_TUA: 'Orang Tua / Wali',
-    MANDIRI: 'Mandiri / Sendiri',
-    OJEK_TRAVEL: 'Ojek Online / Travel',
-    SAUDARA: 'Saudara / Kerabat',
-    LAINNYA: 'Pihak Lainnya',
-  };
-  const escortLabel = escortLabels[permission.escortType] || permission.escortType;
+  const nomorSurat = formatNomorSurat(permission.id, permission.createdAt);
+  const categoryLabel = getPermissionCategoryLabel(permission.category);
+  const escortLabel = getEscortTypeLabel(permission.escortType);
 
   const printButtonContent = isPreparingPrint ? (
     <>
@@ -294,7 +295,7 @@ export function SuratIzinPreviewModal({
                 Rencana Waktu Keluar
               </td>
               <td className={isPrintMode ? 'py-2 px-3 font-bold text-zinc-950' : 'py-2 px-2.5 sm:px-3 font-bold text-zinc-950'}>
-                {formatDateTime(permission.plannedDeparture)} WIB
+                {formatDateTimeWIB(permission.plannedDeparture)} WIB
               </td>
             </tr>
             <tr className="border-b border-zinc-200">
@@ -302,7 +303,7 @@ export function SuratIzinPreviewModal({
                 Rencana Waktu Kembali
               </td>
               <td className={isPrintMode ? 'py-2 px-3 font-bold text-zinc-950' : 'py-2 px-2.5 sm:px-3 font-bold text-zinc-950'}>
-                {formatDateTime(permission.plannedReturn)} WIB
+                {formatDateTimeWIB(permission.plannedReturn)} WIB
               </td>
             </tr>
             <tr className="border-b border-zinc-200">
@@ -345,13 +346,31 @@ export function SuratIzinPreviewModal({
         {/* Sisi Kiri: QR Code & Validasi Sistem */}
         <div className={isPrintMode ? 'flex flex-col items-start text-left' : 'flex flex-col items-center sm:items-start text-center sm:text-left'}>
           {qrCodeUrl ? (
-            <img
-              src={qrCodeUrl}
-              alt="QR Code Verifikasi Perizinan"
-              loading="eager"
-              decoding="sync"
-              className={isPrintMode ? 'w-24 h-24 rounded border border-zinc-300 p-1 mb-1 bg-white' : 'w-20 h-20 sm:w-24 sm:h-24 rounded border border-zinc-300 p-1 mb-1 bg-white'}
-            />
+            !isPrintMode && verifyUrl ? (
+              <a
+                href={verifyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Buka halaman verifikasi keaslian surat"
+                className="inline-block rounded mb-1 transition-shadow hover:ring-2 hover:ring-emerald-600/30"
+              >
+                <img
+                  src={qrCodeUrl}
+                  alt="QR Code Verifikasi Perizinan"
+                  loading="eager"
+                  decoding="sync"
+                  className="w-20 h-20 sm:w-24 sm:h-24 rounded border border-zinc-300 p-1 bg-white block"
+                />
+              </a>
+            ) : (
+              <img
+                src={qrCodeUrl}
+                alt="QR Code Verifikasi Perizinan"
+                loading="eager"
+                decoding="sync"
+                className={isPrintMode ? 'w-24 h-24 rounded border border-zinc-300 p-1 mb-1 bg-white' : 'w-20 h-20 sm:w-24 sm:h-24 rounded border border-zinc-300 p-1 mb-1 bg-white'}
+              />
+            )
           ) : (
             <div
               aria-label="Memuat QR Code"
@@ -372,7 +391,7 @@ export function SuratIzinPreviewModal({
         {/* Sisi Kanan: Penanggung Jawab / Wali Kelas */}
         <div className="text-right text-xs">
           <p className="text-zinc-600 mb-1">
-            Magelang, {formatDateOnly(permission.approvedAt || permission.createdAt)}
+            Magelang, {formatDateOnlyWIB(permission.approvedAt || permission.createdAt)}
           </p>
           <p className="font-semibold text-zinc-700 mb-1">
             Mengetahui & Menyetujui,

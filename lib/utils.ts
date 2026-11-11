@@ -156,3 +156,93 @@ export function formatRupiah(amount?: number): string {
     maximumFractionDigits: 0,
   }).format(amount).replace(/\s/g, '');
 }
+
+const WIB_TIMEZONE = 'Asia/Jakarta';
+
+/**
+ * Format date and time explicitly in WIB (Asia/Jakarta) for consistent SSR and client rendering.
+ */
+export function formatDateTimeWIB(value?: string | Date | null): string {
+  if (!value) return '-';
+  try {
+    const d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d.getTime())) return '-';
+    return new Intl.DateTimeFormat('id-ID', {
+      timeZone: WIB_TIMEZONE,
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+      .format(d)
+      .replace(/\./g, ':');
+  } catch {
+    return typeof value === 'string' ? value : '-';
+  }
+}
+
+/**
+ * Format full Indonesian date explicitly in WIB (Asia/Jakarta).
+ */
+export function formatDateOnlyWIB(value?: string | Date | null): string {
+  if (!value) return '-';
+  try {
+    const d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d.getTime())) return '-';
+    return new Intl.DateTimeFormat('id-ID', {
+      timeZone: WIB_TIMEZONE,
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(d);
+  } catch {
+    return typeof value === 'string' ? value : '-';
+  }
+}
+
+/**
+ * Build the official permit letter number (`SI-IF/YYYY/MM/XXXXXX`) using WIB date parts.
+ */
+export function formatNomorSurat(id: string, createdAt: string | Date): string {
+  const date = createdAt instanceof Date ? createdAt : new Date(createdAt);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: WIB_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(isNaN(date.getTime()) ? new Date() : date);
+
+  const year = parts.find((p) => p.type === 'year')?.value ?? String(new Date().getFullYear());
+  const month = parts.find((p) => p.type === 'month')?.value ?? '01';
+  const shortId = id.slice(-6).toUpperCase();
+
+  return `SI-IF/${year}/${month}/${shortId}`;
+}
+
+export function getPermissionCategoryLabel(category?: string): string {
+  switch (category) {
+    case 'KELUAR_SEBENTAR':
+      return 'Izin Keluar Sebentar (Tidak Menginap)';
+    case 'PESIAR':
+      return 'Izin Pesiar Terjadwal';
+    case 'PULANG_MENGINAP':
+      return 'Izin Pulang Menginap ke Rumah';
+    default:
+      return category || '-';
+  }
+}
+
+const ESCORT_LABELS: Record<string, string> = {
+  ORANG_TUA: 'Orang Tua / Wali',
+  MANDIRI: 'Mandiri / Sendiri',
+  OJEK_TRAVEL: 'Ojek Online / Travel',
+  SAUDARA: 'Saudara / Kerabat',
+  LAINNYA: 'Pihak Lainnya',
+};
+
+export function getEscortTypeLabel(escortType?: string): string {
+  if (!escortType) return '-';
+  return ESCORT_LABELS[escortType] || escortType;
+}
