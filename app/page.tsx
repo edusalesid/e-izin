@@ -17,7 +17,8 @@ import { UserManagementView } from '@/components/views/UserManagementView';
 import { SuratIzinPreviewModal } from '@/components/modals/SuratIzinPreviewModal';
 import { CreatePermissionDrawer } from '@/components/drawers/CreatePermissionDrawer';
 import { ReturnStudentDrawer } from '@/components/drawers/ReturnStudentDrawer';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Database, Users } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   sendPwaNotification,
@@ -683,6 +684,7 @@ export default function UnifiedMainPortalPage() {
                 onRefresh={fetchData}
                 onTabChange={setActiveTab}
                 onOpenAjukan={handleOpenAjukan}
+                onPreviewSurat={(perm) => setPreviewSuratPermission(perm)}
               />
             )}
 
@@ -716,6 +718,38 @@ export default function UnifiedMainPortalPage() {
                 onCheckIn={handleCheckIn}
                 onRefresh={fetchData}
               />
+            )}
+
+            {/* Segmented Sub-Tab Switcher untuk Super Admin: Data Santri vs Kelola User */}
+            {session.role === 'SUPER_ADMIN' && (activeTab === 'MASTER' || activeTab === 'USER_MGMT') && (
+              <div className="grid grid-cols-2 p-1 bg-zinc-200/80 rounded-xl gap-1 mb-3.5">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('MASTER')}
+                  className={cn(
+                    'flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer min-h-[44px]',
+                    activeTab === 'MASTER'
+                      ? 'bg-white text-emerald-950 shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  )}
+                >
+                  <Database className="w-4 h-4 text-emerald-700" />
+                  <span>Data Santri</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('USER_MGMT')}
+                  className={cn(
+                    'flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer min-h-[44px]',
+                    activeTab === 'USER_MGMT'
+                      ? 'bg-white text-emerald-950 shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  )}
+                >
+                  <Users className="w-4 h-4 text-emerald-700" />
+                  <span>Kelola User</span>
+                </button>
+              </div>
             )}
 
             {/* 4. Super Admin Management User Tab (Requirement 5 & 3) */}

@@ -1072,6 +1072,7 @@ export function WaliKelasView({
           emptyTitle="Belum Ada Arsip Perizinan"
           emptySubtitle="Seluruh catatan perizinan santri yang telah disetujui, ditolak, atau selesai akan tersimpan rapi di sini."
           onRefresh={onRefresh}
+          onPreviewSurat={onPreviewSurat}
         />
       )}
     </div>

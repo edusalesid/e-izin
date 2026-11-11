@@ -11,12 +11,14 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, className, showIcon = true }: StatusBadgeProps) {
+  const baseClass = 'rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-normal';
+
   switch (status) {
     case 'PENDING_WALI_KELAS':
       return (
         <Badge
           variant="pending"
-          className={cn('font-medium text-xs', className)}
+          className={cn(baseClass, className)}
         >
           {showIcon && <Clock className="w-3.5 h-3.5 text-amber-700" />}
           <span>Menunggu Persetujuan</span>
@@ -28,7 +30,7 @@ export function StatusBadge({ status, className, showIcon = true }: StatusBadgeP
       return (
         <Badge
           variant="active"
-          className={cn('font-medium text-xs bg-emerald-50 text-emerald-800 border-emerald-200', className)}
+          className={cn(baseClass, 'bg-emerald-50 text-emerald-800 border-emerald-200', className)}
         >
           {showIcon && <LogOut className="w-3.5 h-3.5 text-emerald-700" />}
           <span>Di Luar Asrama</span>
@@ -39,7 +41,7 @@ export function StatusBadge({ status, className, showIcon = true }: StatusBadgeP
       return (
         <Badge
           variant="approved"
-          className={cn('font-medium text-xs', className)}
+          className={cn(baseClass, className)}
         >
           {showIcon && <CheckCheck className="w-3.5 h-3.5 text-emerald-700" />}
           <span>Kembali Tepat Waktu</span>
@@ -50,7 +52,7 @@ export function StatusBadge({ status, className, showIcon = true }: StatusBadgeP
       return (
         <Badge
           variant="destructive"
-          className={cn('font-medium text-xs', className)}
+          className={cn(baseClass, className)}
         >
           {showIcon && <AlertTriangle className="w-3.5 h-3.5 text-rose-700" />}
           <span>Kembali Terlambat</span>
@@ -61,7 +63,7 @@ export function StatusBadge({ status, className, showIcon = true }: StatusBadgeP
       return (
         <Badge
           variant="rejected"
-          className={cn('font-medium text-xs', className)}
+          className={cn(baseClass, className)}
         >
           {showIcon && <XCircle className="w-3.5 h-3.5 text-rose-700" />}
           <span>Ditolak</span>
@@ -72,7 +74,7 @@ export function StatusBadge({ status, className, showIcon = true }: StatusBadgeP
       return (
         <Badge
           variant="outline"
-          className={cn('font-medium text-xs bg-zinc-100 text-zinc-700 border-zinc-300', className)}
+          className={cn(baseClass, 'bg-zinc-100 text-zinc-700 border-zinc-300', className)}
         >
           {showIcon && <Ban className="w-3.5 h-3.5 text-zinc-600" />}
           <span>Izin Dibatalkan</span>

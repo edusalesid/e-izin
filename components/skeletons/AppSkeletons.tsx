@@ -7,18 +7,18 @@ import { cn } from '@/lib/utils';
  */
 export function NavbarSkeleton() {
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-zinc-200 bg-white/95 backdrop-blur-xs">
-      <div className="mx-auto flex max-w-md items-center justify-between gap-2 px-3.5 py-2.5">
-        <div className="flex items-center gap-2">
+    <header className="sticky top-0 z-40 w-full border-b border-zinc-200 bg-white/95 backdrop-blur-md">
+      <div className="mx-auto flex max-w-md items-center justify-between gap-3 px-3.5 py-2.5">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
           {/* Logo placeholder */}
-          <Skeleton className="h-9 w-24 rounded-lg bg-zinc-200" />
-          <div className="border-l border-zinc-200 pl-2 space-y-1">
-            <Skeleton className="h-3.5 w-20 bg-zinc-200" />
-            <Skeleton className="h-2.5 w-24 bg-zinc-100" />
+          <Skeleton className="h-8 w-[58px] shrink-0 rounded-md bg-zinc-200" />
+          <div className="border-l border-zinc-200 pl-2.5 space-y-1.5">
+            <Skeleton className="h-3.5 w-24 bg-zinc-200" />
+            <Skeleton className="h-3 w-32 bg-zinc-100" />
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Skeleton className="h-8 w-24 rounded-full bg-zinc-200" />
+        <div className="flex items-center gap-2.5 shrink-0">
+          <Skeleton className="h-11 w-11 rounded-lg bg-zinc-200" />
         </div>
       </div>
     </header>
@@ -31,12 +31,12 @@ export function NavbarSkeleton() {
 export function BottomNavSkeleton({ tabCount = 4 }: { tabCount?: number }) {
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40 border-t border-zinc-200 bg-white/95 backdrop-blur-xs"
+      className="fixed bottom-0 left-0 right-0 z-40 border-t border-zinc-200 bg-white"
       aria-label="Memuat navigasi..."
     >
-      <div className="mx-auto flex max-w-md items-center justify-around px-2 py-2">
+      <div className="mx-auto flex max-w-md items-center justify-around px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {Array.from({ length: tabCount }).map((_, i) => (
-          <div key={i} className="flex flex-col items-center gap-1 py-1 px-3">
+          <div key={i} className="flex flex-col items-center gap-1 py-1.5 px-3">
             <Skeleton className="h-5 w-5 rounded-full bg-zinc-200" />
             <Skeleton className="h-2.5 w-10 bg-zinc-100" />
           </div>
@@ -51,35 +51,41 @@ export function BottomNavSkeleton({ tabCount = 4 }: { tabCount?: number }) {
  */
 export function PermissionCardSkeleton() {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-3.5 sm:p-4 shadow-xs space-y-3">
-      {/* Top Header */}
-      <div className="flex items-start justify-between gap-2.5">
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <Skeleton className="h-9 w-9 rounded-lg bg-zinc-200 shrink-0" />
-          <div className="space-y-1.5 flex-1 min-w-0">
-            <Skeleton className="h-4 w-3/4 max-w-[160px] bg-zinc-200" />
-            <Skeleton className="h-3 w-1/2 max-w-[120px] bg-zinc-100" />
-          </div>
-        </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          <Skeleton className="h-5 w-20 rounded-full bg-zinc-200" />
-          <Skeleton className="h-4 w-16 rounded bg-zinc-100" />
+    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-xs space-y-3">
+      {/* Row 1: Status Badge & Category */}
+      <div className="flex items-center justify-between gap-2">
+        <Skeleton className="h-6 w-28 rounded-full bg-zinc-200 shrink-0" />
+        <Skeleton className="h-3.5 w-32 bg-zinc-100" />
+      </div>
+
+      {/* Row 2: Full-width Identity */}
+      <div className="flex items-center gap-3 min-w-0">
+        <Skeleton className="h-10 w-10 rounded-xl bg-zinc-200 shrink-0" />
+        <div className="space-y-1.5 flex-1 min-w-0">
+          <Skeleton className="h-4 w-3/4 max-w-[200px] bg-zinc-200" />
+          <Skeleton className="h-3 w-1/2 max-w-[130px] bg-zinc-100" />
         </div>
       </div>
 
-      {/* Schedule Box */}
-      <div className="rounded-lg bg-zinc-50 border border-zinc-100 p-2.5 space-y-1.5">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-3 w-28 bg-zinc-200" />
-          <Skeleton className="h-3 w-16 bg-zinc-100" />
+      {/* Keperluan line */}
+      <Skeleton className="h-3.5 w-5/6 bg-zinc-100" />
+
+      {/* Metadata rows separated by hairline */}
+      <div className="pt-2.5 border-t border-zinc-100 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <Skeleton className="h-3 w-36 bg-zinc-200" />
+          <Skeleton className="h-3 w-24 bg-zinc-100" />
         </div>
-        <Skeleton className="h-3 w-40 bg-zinc-100" />
+        <div className="flex items-center justify-between gap-2">
+          <Skeleton className="h-3 w-32 bg-zinc-100" />
+          <Skeleton className="h-3 w-28 bg-zinc-100" />
+        </div>
       </div>
 
       {/* Action / Footer */}
-      <div className="flex items-center justify-between pt-1">
-        <Skeleton className="h-3 w-24 bg-zinc-100" />
-        <Skeleton className="h-8 w-24 rounded-lg bg-zinc-200" />
+      <div className="pt-2.5 border-t border-zinc-100 flex items-center justify-between">
+        <Skeleton className="h-10 w-24 rounded-xl bg-zinc-100" />
+        <Skeleton className="h-10 w-28 rounded-xl bg-zinc-200" />
       </div>
     </div>
   );
@@ -375,13 +381,19 @@ export function PortalDashboardSkeleton({ role }: { role?: string }) {
  * Rendered when loading a fresh page or before hydration/session is established
  */
 export function FullPortalPageSkeleton({ role }: { role?: string }) {
+  const tabCount =
+    role === 'ORANG_TUA'
+      ? 3
+      : role === 'SATPAM' || role === 'KEPALA_ASRAMA' || role === 'SUPER_ADMIN'
+      ? 4
+      : 5;
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col border-x border-zinc-200 bg-zinc-50 shadow-sm relative">
       <NavbarSkeleton />
       <main className="flex-1 p-3.5 pb-24 overflow-y-auto">
         <PortalDashboardSkeleton role={role} />
       </main>
-      <BottomNavSkeleton tabCount={role === 'ORANG_TUA' ? 3 : 5} />
+      <BottomNavSkeleton tabCount={tabCount} />
     </div>
   );
 }

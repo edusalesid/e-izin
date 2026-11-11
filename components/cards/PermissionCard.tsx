@@ -3,13 +3,11 @@
 import React, { useState, useMemo } from 'react';
 import { Permission, UserRole } from '@/lib/types';
 import { StatusBadge } from './StatusBadge';
-import { formatDateTime, formatDateOnly, formatDuration, formatRupiah, calculateLateFine } from '@/lib/utils';
+import { formatDateTime, formatDuration, formatRupiah, calculateLateFine } from '@/lib/utils';
 import {
   Clock,
   Check,
   X,
-  ArrowUpRight,
-  ShieldCheck,
   CheckCircle2,
   AlertCircle,
   ChevronDown,
@@ -17,10 +15,8 @@ import {
   MessageCircle,
   Ban,
   FileText,
-  Printer,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -59,6 +55,18 @@ function formatScheduleRange(startIso?: string, endIso?: string): string {
   } catch {
     return '-';
   }
+}
+
+function formatName(name: string): string {
+  if (!name) return '';
+  if (name === name.toUpperCase()) {
+    return name
+      .toLowerCase()
+      .split(' ')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+  return name;
 }
 
 function getEstimatedDuration(startIso?: string, endIso?: string): string {
@@ -150,60 +158,53 @@ export function PermissionCard({
 
   return (
     <Card className={cn(
-      "p-3.5 space-y-2.5 transition-all shadow-xs border",
-      isCancelled ? "bg-zinc-50/70 border-zinc-200 opacity-80" : "bg-white border-zinc-200"
+      "p-3.5 sm:p-4 rounded-2xl space-y-3 transition-all border shadow-2xs",
+      isCancelled ? "bg-zinc-50/70 border-zinc-200 opacity-80" : "bg-white border-zinc-200/90"
     )}>
-      {/* Header Baris Pertama: Nama Santri, Kategori, Status */}
-      <div className="flex items-start justify-between gap-2">
+      {/* Header Baris Pertama: Nama Santri, Metadata, Status */}
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <h3 className="text-xs sm:text-sm font-bold text-zinc-900 truncate">
-              {permission.studentName}
-            </h3>
-            <Badge
-              variant="outline"
-              className={cn(
-                'text-[10px] px-1.5 py-0 font-semibold border',
-                isKeluarSebentar
-                  ? 'bg-amber-50 text-amber-900 border-amber-200'
-                  : 'bg-emerald-50 text-emerald-900 border-emerald-200'
-              )}
-            >
+          <h3 className="text-sm font-bold text-zinc-900 truncate tracking-tight">
+            {formatName(permission.studentName)}
+          </h3>
+          <p className="text-xs text-zinc-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+            <span>Kelas <strong className="font-semibold text-zinc-700">{permission.className}</strong></span>
+            <span className="text-zinc-300">•</span>
+            <span>NIS <span className="font-mono text-zinc-600">{permission.studentNis}</span></span>
+            <span className="text-zinc-300">•</span>
+            <span className={cn(
+              "font-medium",
+              isKeluarSebentar ? "text-amber-800" : "text-emerald-800"
+            )}>
               {categoryLabel}
-            </Badge>
-          </div>
-          <p className="text-[11px] text-zinc-500 mt-0.5">
-            Kelas: <strong className="text-zinc-700">{permission.className}</strong> &bull; NIS: <span className="font-mono">{permission.studentNis}</span>
+            </span>
           </p>
         </div>
 
-        <StatusBadge status={permission.status} />
+        <StatusBadge status={permission.status} className="shrink-0" />
       </div>
 
-      {/* Baris Kedua: Keperluan / Alasan */}
-      <div className="rounded-lg bg-zinc-50/80 border border-zinc-100 p-2 text-xs text-zinc-800 leading-relaxed font-medium">
-        <p className="line-clamp-2">{permission.reason}</p>
+      {/* Baris Kedua: Keperluan / Alasan (Tanpa Kotak Berlebih / Clean Prose) */}
+      <p className="text-xs text-zinc-700 leading-relaxed font-normal">
+        {permission.reason}
+      </p>
+
+      {/* Baris Ketiga: Rencana Jadwal Waktu & Durasi Menyatu */}
+      <div className="flex items-center gap-1.5 text-xs text-zinc-500 pt-0.5">
+        <Clock className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+        <span className="font-medium text-zinc-700 truncate">{scheduleRange}</span>
+        <span className="text-zinc-300 shrink-0">•</span>
+        <span className="text-zinc-500 font-medium shrink-0">({durationLabel})</span>
       </div>
 
-      {/* Baris Ketiga: Rencana Jadwal Waktu */}
-      <div className="flex items-center justify-between text-xs text-zinc-600 pt-0.5">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Clock className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-          <span className="truncate font-medium">{scheduleRange}</span>
-        </div>
-        <span className="text-[10px] font-mono font-bold bg-zinc-100 text-zinc-700 px-1.5 py-0.5 rounded border border-zinc-200 shrink-0">
-          {durationLabel}
-        </span>
-      </div>
-
-      {/* Bagian Peringatan Keterlambatan Realtime (Jika sedang di luar dan melewati batas) */}
+      {/* Bagian Peringatan Keterlambatan Realtime */}
       {isLateNow && (
-        <div className="rounded-lg bg-rose-50 border border-rose-200 p-2 flex items-center justify-between text-xs text-rose-800 font-semibold">
+        <div className="rounded-xl bg-rose-50 border border-rose-200 p-2.5 flex items-center justify-between text-xs text-rose-900 font-semibold">
           <div className="flex items-center gap-1.5">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>Terlambat: {formatDuration(lateMinutesNow)}</span>
           </div>
-          <span className="font-mono text-[11px] font-bold text-rose-950">
+          <span className="font-mono text-xs font-bold text-rose-950">
             Denda: {formatRupiah(estimatedFineAmount)}
           </span>
         </div>
@@ -211,46 +212,63 @@ export function PermissionCard({
 
       {/* Bagian Rincian Tambahan (Expandable) */}
       {showDetails && (
-        <div className="pt-2 border-t border-zinc-100 space-y-2 text-xs text-zinc-600 animate-in fade-in-50 duration-150">
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <div className="p-2 rounded-lg bg-zinc-50 border border-zinc-100">
-              <span className="text-zinc-400 block text-[10px]">Penjemput</span>
-              <strong className="text-zinc-800">{escortLabel}</strong>
+        <div className="pt-2.5 border-t border-zinc-100 space-y-2.5 text-xs text-zinc-600 animate-in fade-in-50 duration-150">
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-100">
+              <span className="text-zinc-400 block text-[11px]">Penjemput</span>
+              <strong className="text-zinc-800 font-semibold">{escortLabel}</strong>
               {permission.escortNote && (
-                <p className="text-zinc-500 text-[10px] mt-0.5 italic">{permission.escortNote}</p>
+                <p className="text-zinc-500 text-[11px] mt-0.5 italic">{permission.escortNote}</p>
               )}
             </div>
-            <div className="p-2 rounded-lg bg-zinc-50 border border-zinc-100">
-              <span className="text-zinc-400 block text-[10px]">Pemohon</span>
-              <strong className="text-zinc-800">{permission.applicantName}</strong>
-              <p className="text-zinc-500 text-[10px] mt-0.5 font-mono">{permission.applicantPhone}</p>
+            <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-100">
+              <span className="text-zinc-400 block text-[11px]">Pemohon</span>
+              <strong className="text-zinc-800 font-semibold">{permission.applicantName}</strong>
+              <p className="text-zinc-500 text-[11px] mt-0.5 font-mono">{permission.applicantPhone}</p>
             </div>
           </div>
 
           {/* WhatsApp Action ke Wali Santri */}
           {permission.applicantPhone && permission.applicantPhone !== '-' && (
-            <div className="pt-1">
+            <div className="pt-0.5">
               <a
                 href={getWhatsAppUrl(permission.applicantPhone, permission.studentName, permission.reason)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 font-semibold text-xs transition-colors cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 text-emerald-800 font-semibold text-xs transition-colors cursor-pointer"
               >
-                <MessageCircle className="w-3.5 h-3.5 text-emerald-700" />
+                <MessageCircle className="w-4 h-4 text-emerald-700" />
                 <span>Hubungi Wali Santri via WhatsApp</span>
               </a>
             </div>
           )}
 
           {/* Audit Log / Approver Info */}
-          <div className="text-[10px] text-zinc-400 space-y-0.5 pt-1">
+          <div className="text-[11px] text-zinc-400 space-y-0.5 pt-0.5">
             {permission.approvedByName && (
-              <p>Disetujui oleh: <strong className="text-zinc-700">{permission.approvedByName}</strong> ({formatDateTime(permission.approvedAt || permission.createdAt)})</p>
+              <p>Disetujui oleh: <strong className="text-zinc-700 font-medium">{permission.approvedByName}</strong> ({formatDateTime(permission.approvedAt || permission.createdAt)})</p>
             )}
             {permission.rejectionReason && (
               <p className="text-rose-700 font-medium">Catatan / Alasan: {permission.rejectionReason}</p>
             )}
           </div>
+
+          {/* Aksi Pembatalan Aman di dalam Rincian (Mencegah salah tekan tombol destruktif di kartu utama) */}
+          {activeRole !== 'ORANG_TUA' && !isCancelled && (isPendingWali || isApproved || isOutside) && onCancel && (
+            <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
+              <span className="text-xs text-zinc-500">Izin batal digunakan?</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setCancelling(true)}
+                className="h-8 px-2.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 hover:text-rose-700 rounded-lg flex items-center gap-1.5 cursor-pointer"
+              >
+                <Ban className="w-3.5 h-3.5 text-rose-600" />
+                <span>Batalkan Izin Santri</span>
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -262,7 +280,7 @@ export function PermissionCard({
             placeholder="Tuliskan alasan penolakan izin..."
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
-            className="text-xs h-9 border-rose-300 focus-visible:ring-rose-500/20"
+            className="text-xs h-9 border-rose-300 focus-visible:ring-rose-500/20 rounded-lg"
           />
           <div className="flex items-center justify-end gap-2">
             <Button
@@ -292,19 +310,19 @@ export function PermissionCard({
         </div>
       )}
 
-      {/* Panel Formulir Pembatalan Izin (Cancel / Remove oleh Musrif/Guru manapun - Requirement 2) */}
+      {/* Panel Formulir Pembatalan Izin */}
       {cancelling && (
-        <div className="mt-2.5 pt-2.5 border-t border-rose-200 bg-rose-50/50 p-2.5 rounded-xl space-y-2">
+        <div className="mt-2.5 pt-2.5 border-t border-rose-200 bg-rose-50/50 p-3 rounded-xl space-y-2.5 animate-in fade-in-50 duration-150">
           <div className="flex items-center gap-1.5 text-xs font-bold text-rose-900">
-            <Ban className="w-3.5 h-3.5 text-rose-600" />
+            <Ban className="w-4 h-4 text-rose-600" />
             <span>Batalkan Izin (Anak Batal Keluar/Pulang)</span>
           </div>
           <Input
             type="text"
-            placeholder="Alasan pembatalan (misal: jemputan tidak datang, batal izin)..."
+            placeholder="Alasan pembatalan (misal: jemputan tidak datang)..."
             value={cancelReason}
             onChange={(e) => setCancelReason(e.target.value)}
-            className="text-xs h-9 border-rose-300 bg-white focus-visible:ring-rose-500/20"
+            className="text-xs h-9 border-rose-300 bg-white focus-visible:ring-rose-500/20 rounded-lg"
           />
           <div className="flex items-center justify-end gap-2">
             <Button
@@ -383,15 +401,15 @@ export function PermissionCard({
         </div>
       )}
 
-      {/* Baris Tombol Aksi Bawah */}
+      {/* Baris Tombol Aksi Bawah: 2 Zona Seimbang, Tidak Patah di Mobile */}
       {!rejecting && !cancelling && !isConfirmingReturn && (
-        <div className="pt-2 border-t border-zinc-100 flex items-center justify-between gap-1.5 flex-wrap">
+        <div className="pt-2.5 border-t border-zinc-100 flex items-center justify-between gap-2">
           {/* Sisi Kiri: Toggle Rincian & Export PDF */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => setShowDetails(!showDetails)}
-              className="text-[11px] font-semibold text-zinc-500 hover:text-zinc-800 flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-zinc-100 cursor-pointer"
+              className="text-xs font-medium text-zinc-600 hover:text-zinc-900 flex items-center gap-1 h-9 px-2.5 rounded-xl hover:bg-zinc-100 transition-colors cursor-pointer"
             >
               <span>{showDetails ? 'Tutup' : 'Rincian'}</span>
               {showDetails ? (
@@ -401,35 +419,34 @@ export function PermissionCard({
               )}
             </button>
 
-            {/* Tombol Preview & Export PDF Surat Izin (Requirement 4) */}
+            {/* Tombol Preview & Export PDF Surat Izin (Netral, tidak berebut warna primer) */}
             {(isApproved || isOutside || permission.status === 'KEMBALI_TEPAT_WAKTU' || permission.status === 'KEMBALI_TERLAMBAT') && onPreviewSurat && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => onPreviewSurat(permission)}
-                className="h-7 px-2 rounded-lg border-emerald-200 text-emerald-800 hover:bg-emerald-50 text-[11px] font-bold flex items-center gap-1"
+                className="h-9 px-3 rounded-xl border-zinc-200 text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 text-xs font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
                 title="Lihat Pratinjau & Cetak Surat Izin (PDF)"
               >
-                <FileText className="w-3 h-3 text-emerald-700" />
+                <FileText className="w-3.5 h-3.5 text-zinc-500" />
                 <span>Surat PDF</span>
               </Button>
             )}
           </div>
 
-          {/* Sisi Kanan: Aksi Khusus Berdasarkan Role */}
-          <div className="flex items-center gap-1.5">
-            {/* Tombol Batal Izin / Remove (Requirement 2: bisa dilakukan oleh semua musrif/guru) */}
-            {activeRole !== 'ORANG_TUA' && !isCancelled && (isPendingWali || isApproved || isOutside) && onCancel && (
+          {/* Sisi Kanan: Aksi Operasional Utama */}
+          <div className="flex items-center gap-2">
+            {/* Tombol Batal Cepat (hanya ditampilkan jika tidak ada aksi utama lain di kanan) */}
+            {activeRole !== 'ORANG_TUA' && !isCancelled && (isPendingWali || isApproved || isOutside) && onCancel && !isOutside && !(isPendingWali && onApprove) && (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() => setCancelling(true)}
-                className="h-8 px-2 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 hover:text-rose-700 rounded-lg flex items-center gap-1"
-                title="Batalkan Izin (Anak batal keluar)"
+                className="h-9 px-2.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 hover:text-rose-700 rounded-xl flex items-center gap-1.5 cursor-pointer"
               >
-                <Ban className="w-3 h-3 text-rose-600" />
+                <Ban className="w-3.5 h-3.5 text-rose-600" />
                 <span>Batal Izin</span>
               </Button>
             )}
@@ -442,7 +459,7 @@ export function PermissionCard({
                   variant="outline"
                   size="sm"
                   onClick={() => setRejecting(true)}
-                  className="h-8 px-2.5 rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-semibold cursor-pointer"
+                  className="h-9 px-3 rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-semibold cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5 mr-1" />
                   Tolak
@@ -451,7 +468,7 @@ export function PermissionCard({
                   type="button"
                   size="sm"
                   onClick={() => onApprove(permission.id)}
-                  className="h-8 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs cursor-pointer active:scale-95 transition-all"
+                  className="h-9 px-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs cursor-pointer active:scale-95 transition-all"
                 >
                   <Check className="w-3.5 h-3.5 mr-1" />
                   Setujui
@@ -459,7 +476,7 @@ export function PermissionCard({
               </>
             )}
 
-            {/* 2. Konfirmasi Kembali ke Asrama oleh Musrif/Ustadz/Satpam manapun */}
+            {/* 2. Konfirmasi Kembali ke Asrama (Satu CTA Utama yang Jelas dan Kuat) */}
             {activeRole !== 'ORANG_TUA' && isOutside && onCheckIn && (
               <Button
                 type="button"
@@ -470,9 +487,9 @@ export function PermissionCard({
                     onCheckIn(permission.id, 'UNPAID');
                   }
                 }}
-                className="h-8.5 px-3 rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                className="h-9 px-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
               >
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-200" />
                 <span>Santri Kembali</span>
               </Button>
             )}

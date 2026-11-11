@@ -11,7 +11,6 @@ import { TabKey } from '../BottomNav';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
 interface UstadzViewProps {
@@ -96,39 +95,39 @@ export function UstadzView({
       {/* Tab: STATUS */}
       {activeTab === 'STATUS' && (
         <div className="space-y-3">
-          {/* Quick Action: Cek-in Santri Kembali (Compact Anti-Slop Bar) */}
+          {/* Quick Action: Cek-in Santri Kembali */}
           {outsideStudents.length > 0 && onOpenReturnDrawer && (
             <button
               type="button"
               onClick={onOpenReturnDrawer}
-              className="w-full flex items-center justify-between p-2.5 px-3 rounded-xl border border-emerald-200/90 bg-emerald-50/70 hover:bg-emerald-100/70 text-emerald-950 transition active:scale-[0.99] cursor-pointer shadow-2xs"
+              className="w-full flex items-center justify-between p-3 rounded-2xl border border-emerald-200/90 bg-emerald-50/70 hover:bg-emerald-100/60 text-emerald-950 transition active:scale-[0.99] cursor-pointer shadow-2xs"
             >
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md bg-emerald-700 text-white flex items-center justify-center shrink-0">
-                  <UserCheck className="w-3.5 h-3.5" />
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-700 text-white flex items-center justify-center shrink-0">
+                  <UserCheck className="w-4 h-4" />
                 </div>
-                <div className="text-left flex items-center gap-1.5">
+                <div className="text-left flex items-center gap-2">
                   <span className="text-xs font-bold text-zinc-900">
                     Cek-in Santri Kembali
                   </span>
-                  <span className="text-[10px] font-semibold bg-emerald-200/80 text-emerald-900 px-1.5 py-0.2 rounded-full">
+                  <span className="text-[11px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-lg">
                     {outsideStudents.length} di luar
                   </span>
                 </div>
               </div>
-              <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-0.5">
-                Cari Santri <ChevronRight className="w-3.5 h-3.5" />
+              <span className="text-xs font-semibold text-emerald-700 flex items-center gap-0.5">
+                Cari Santri <ChevronRight className="w-4 h-4" />
               </span>
             </button>
           )}
 
-          <div className="flex items-center justify-between px-0.5">
+          <div className="flex items-center justify-between px-0.5 pt-0.5">
             <div>
               <h2 className="text-sm font-bold text-zinc-900">Status Permohonan Santri</h2>
-              <p className="text-xs text-zinc-600">Izin santri yang diajukan oleh Anda</p>
+              <p className="text-xs text-zinc-500">Izin santri yang diajukan oleh Anda</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold text-zinc-500">
+              <span className="text-xs font-medium text-zinc-500">
                 {filteredSubmissions.length} Permohonan
               </span>
               <Button
@@ -140,7 +139,7 @@ export function UstadzView({
                     description: 'Status permohonan santri telah disinkronkan.',
                   });
                 }}
-                className="text-xs text-emerald-700 hover:text-emerald-800"
+                className="h-8 px-2.5 rounded-lg text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 cursor-pointer"
               >
                 Segarkan
               </Button>

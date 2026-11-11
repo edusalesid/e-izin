@@ -30,6 +30,7 @@ interface ParentPortalViewProps {
   onRefresh: () => void;
   onTabChange: (tab: TabKey) => void;
   onOpenAjukan?: () => void;
+  onPreviewSurat?: (permission: Permission) => void;
 }
 
 export function ParentPortalView({
@@ -39,6 +40,7 @@ export function ParentPortalView({
   onRefresh,
   onTabChange,
   onOpenAjukan,
+  onPreviewSurat,
 }: ParentPortalViewProps) {
   const activePermission = permissions.find(
     (p) =>
@@ -223,7 +225,11 @@ export function ParentPortalView({
               </Card>
 
               {/* Detail Card Izin Aktif */}
-              <PermissionCard permission={activePermission} activeRole="ORANG_TUA" />
+              <PermissionCard
+                permission={activePermission}
+                activeRole="ORANG_TUA"
+                onPreviewSurat={onPreviewSurat}
+              />
             </div>
           ) : (
             <Card className="border border-zinc-200/90 bg-white p-6 text-center shadow-2xs space-y-3">
@@ -281,6 +287,7 @@ export function ParentPortalView({
           emptyTitle="Belum Ada Riwayat Perizinan Ananda"
           emptySubtitle="Permohonan izin ananda yang telah selesai atau diputuskan akan tersimpan di sini."
           onRefresh={onRefresh}
+          onPreviewSurat={onPreviewSurat}
         />
       )}
     </div>

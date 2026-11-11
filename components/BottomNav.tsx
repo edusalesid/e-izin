@@ -11,8 +11,6 @@ import {
   Users,
   ShieldCheck,
   LogOut,
-  Activity,
-  AlertTriangle,
   Database,
   User,
   CalendarClock,
@@ -51,7 +49,13 @@ export function BottomNav({
   outsideCount = 0,
   lateCount = 0,
 }: BottomNavProps) {
-  const getTabs = () => {
+  const getTabs = (): Array<{
+    key: TabKey;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: number;
+    badgeTone?: 'pending' | 'outside';
+  }> => {
     switch (activeRole) {
       case 'ORANG_TUA':
         return [
@@ -62,48 +66,45 @@ export function BottomNav({
 
       case 'WALI_KELAS':
         return [
-          { key: 'KELAS', label: 'Santri Kelas', icon: Users },
+          { key: 'KELAS', label: 'Santri', icon: Users },
           { key: 'PESIAR', label: 'Pesiar', icon: CalendarClock },
-          { key: 'APPROVAL', label: 'Persetujuan', icon: CheckSquare, badge: pendingCount },
+          { key: 'APPROVAL', label: 'Persetujuan', icon: CheckSquare, badge: pendingCount, badgeTone: 'pending' },
           { key: 'RIWAYAT', label: 'Riwayat', icon: History },
-          { key: 'PROFIL', label: 'Profil Akun', icon: User },
+          { key: 'PROFIL', label: 'Profil', icon: User },
         ];
 
       case 'SATPAM':
         return [
-          { key: 'GERBANG', label: 'Siap Keluar', icon: ShieldCheck, badge: pendingCount },
-          { key: 'DILUAR', label: 'Di Luar', icon: LogOut, badge: outsideCount },
-          { key: 'RIWAYAT', label: 'Log Gerbang', icon: History },
-          { key: 'PROFIL', label: 'Profil Akun', icon: User },
+          { key: 'GERBANG', label: 'Siap Keluar', icon: ShieldCheck, badge: pendingCount, badgeTone: 'pending' },
+          { key: 'DILUAR', label: 'Di Luar', icon: LogOut, badge: outsideCount, badgeTone: 'outside' },
+          { key: 'RIWAYAT', label: 'Riwayat', icon: History },
+          { key: 'PROFIL', label: 'Profil', icon: User },
         ];
 
       case 'SUPER_ADMIN':
         return [
-          { key: 'APPROVAL', label: 'Persetujuan', icon: CheckSquare, badge: pendingCount },
-          { key: 'MONITOR', label: 'Monitoring', icon: Activity, badge: outsideCount },
-          { key: 'USER_MGMT', label: 'Kelola User', icon: Users },
-          { key: 'MASTER', label: 'Data Santri', icon: Database },
-          { key: 'RIWAYAT', label: 'Semua Izin', icon: History },
+          { key: 'APPROVAL', label: 'Persetujuan', icon: CheckSquare, badge: pendingCount, badgeTone: 'pending' },
+          { key: 'MASTER', label: 'Master', icon: Database },
+          { key: 'RIWAYAT', label: 'Riwayat', icon: History, badge: outsideCount, badgeTone: 'outside' },
           { key: 'PROFIL', label: 'Profil', icon: User },
         ];
 
       case 'KEPALA_ASRAMA':
         return [
-          { key: 'APPROVAL', label: 'Persetujuan', icon: CheckSquare, badge: pendingCount },
-          { key: 'MONITOR', label: 'Monitoring', icon: Activity, badge: outsideCount },
+          { key: 'APPROVAL', label: 'Persetujuan', icon: CheckSquare, badge: pendingCount, badgeTone: 'pending' },
           { key: 'MASTER', label: 'Data Santri', icon: Database },
-          { key: 'RIWAYAT', label: 'Semua Izin', icon: History },
+          { key: 'RIWAYAT', label: 'Riwayat', icon: History, badge: outsideCount, badgeTone: 'outside' },
           { key: 'PROFIL', label: 'Profil', icon: User },
         ];
 
       case 'USTADZ_UMUM':
       default:
         return [
-          { key: 'STATUS', label: 'Status Santri', icon: Clock },
+          { key: 'STATUS', label: 'Status', icon: Clock },
           { key: 'PESIAR', label: 'Pesiar', icon: CalendarClock },
           { key: 'AJUKAN', label: 'Buat Izin', icon: FileText },
           { key: 'RIWAYAT', label: 'Riwayat', icon: History },
-          { key: 'PROFIL', label: 'Profil Akun', icon: User },
+          { key: 'PROFIL', label: 'Profil', icon: User },
         ];
     }
   };
@@ -111,37 +112,45 @@ export function BottomNav({
   const tabs = getTabs();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-zinc-200 bg-white/95 backdrop-blur-xs">
-      <div className="mx-auto flex max-w-md items-center justify-around px-1 py-1">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-zinc-200 bg-white">
+      <div className="mx-auto flex max-w-md items-center justify-around px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive =
             activeTab === tab.key ||
             ((activeRole === 'SUPER_ADMIN' || activeRole === 'KEPALA_ASRAMA') &&
               ((tab.key === 'APPROVAL' && activeTab === 'PESIAR') ||
-                (tab.key === 'MONITOR' && activeTab === 'TERLAMBAT')));
+                (tab.key === 'RIWAYAT' && (activeTab === 'MONITOR' || activeTab === 'TERLAMBAT')))) ||
+            (activeRole === 'SUPER_ADMIN' && tab.key === 'MASTER' && activeTab === 'USER_MGMT');
           const hasBadge = Boolean(tab.badge && tab.badge > 0);
+          const badgeLabel = tab.badge && tab.badge > 99 ? '99+' : tab.badge;
 
           return (
             <button
               key={tab.key}
-              onClick={() => onTabChange(tab.key as TabKey)}
+              type="button"
+              onClick={() => onTabChange(tab.key)}
               className={cn(
-                'relative flex flex-col items-center justify-center py-1.5 px-2 rounded-lg transition-colors cursor-pointer select-none min-h-[48px] min-w-[56px] flex-1 max-w-[84px]',
+                'relative flex flex-col items-center justify-center py-1.5 px-1.5 rounded-xl transition-colors cursor-pointer select-none min-h-[48px] flex-1 max-w-[84px]',
                 isActive
                   ? 'text-emerald-800 font-bold'
-                  : 'text-zinc-500 hover:text-zinc-800 font-medium'
+                  : 'text-zinc-600 hover:text-zinc-900 font-medium'
               )}
             >
               <div className="relative">
                 <Icon className={cn('w-5 h-5 transition-transform', isActive && 'scale-105 stroke-[2.2] text-emerald-700')} />
                 {hasBadge && (
-                  <span className="absolute -top-1 -right-2.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold text-white shadow-xs">
-                    {tab.badge}
+                  <span
+                    className={cn(
+                      'absolute -top-1 -right-2.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums text-white ring-2 ring-white shadow-xs',
+                      tab.badgeTone === 'outside' ? 'bg-emerald-700' : 'bg-rose-600'
+                    )}
+                  >
+                    {badgeLabel}
                   </span>
                 )}
               </div>
-              <span className="mt-1 text-[10px] tracking-tight leading-none truncate max-w-[72px]">
+              <span className="mt-1 text-[11px] tracking-tight leading-tight truncate max-w-[74px]">
                 {tab.label}
               </span>
             </button>

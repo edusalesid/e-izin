@@ -1,5 +1,5 @@
 // Service Worker for E-Izin Santri SMAIT Ihsanul Fikri PWA
-const CACHE_NAME = 'e-izin-pwa-v8';
+const CACHE_NAME = 'e-izin-pwa-v9';
 
 const STATIC_ASSETS = [
   '/manifest.json',

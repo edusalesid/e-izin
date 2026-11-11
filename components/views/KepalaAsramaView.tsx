@@ -27,6 +27,7 @@ import {
   Save,
   CheckCircle2,
   CalendarClock,
+  History,
 } from 'lucide-react';
 import { TabKey } from '../BottomNav';
 import { Card } from '@/components/ui/card';
@@ -214,8 +215,12 @@ export function KepalaAsramaView({
   const [approvalSubTab, setApprovalSubTab] = useState<'IZIN' | 'PESIAR'>(
     activeTab === 'PESIAR' ? 'PESIAR' : 'IZIN'
   );
-  const [monitorSubTab, setMonitorSubTab] = useState<'OUTSIDE' | 'LATE'>(
-    activeTab === 'TERLAMBAT' ? 'LATE' : 'OUTSIDE'
+  const [riwayatSubTab, setRiwayatSubTab] = useState<'ARCHIVE' | 'OUTSIDE' | 'LATE'>(
+    activeTab === 'TERLAMBAT'
+      ? 'LATE'
+      : activeTab === 'MONITOR'
+      ? 'OUTSIDE'
+      : 'ARCHIVE'
   );
 
   useEffect(() => {
@@ -226,9 +231,11 @@ export function KepalaAsramaView({
     }
 
     if (activeTab === 'TERLAMBAT') {
-      setMonitorSubTab('LATE');
+      setRiwayatSubTab('LATE');
     } else if (activeTab === 'MONITOR') {
-      setMonitorSubTab('OUTSIDE');
+      setRiwayatSubTab('OUTSIDE');
+    } else if (activeTab === 'RIWAYAT') {
+      setRiwayatSubTab('ARCHIVE');
     }
   }, [activeTab]);
 
@@ -691,48 +698,89 @@ export function KepalaAsramaView({
         </div>
       )}
 
-      {/* Tab: MONITOR & TERLAMBAT (Pusat Monitoring & Pengawasan Santri di Luar) */}
-      {(activeTab === 'MONITOR' || activeTab === 'TERLAMBAT') && (
+      {/* Tab: RIWAYAT, MONITOR & TERLAMBAT (Pusat Riwayat & Monitoring Santri) */}
+      {(activeTab === 'RIWAYAT' || activeTab === 'MONITOR' || activeTab === 'TERLAMBAT') && (
         <div className="space-y-3">
-          {/* Segmented Sub-Tab Switcher: Santri di Luar vs Keterlambatan */}
-          <div className="grid grid-cols-2 p-1 bg-zinc-200/80 rounded-xl gap-1">
+          {/* Segmented Sub-Tab Switcher: Semua Izin vs Di Luar vs Terlambat */}
+          <div
+            role="tablist"
+            aria-label="Sub-menu Riwayat dan Monitoring"
+            className="grid grid-cols-3 p-1 bg-zinc-200/80 rounded-xl gap-1"
+          >
             <button
               type="button"
-              onClick={() => setMonitorSubTab('OUTSIDE')}
+              role="tab"
+              aria-selected={riwayatSubTab === 'ARCHIVE'}
+              onClick={() => setRiwayatSubTab('ARCHIVE')}
               className={cn(
-                'flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer min-h-[44px]',
-                monitorSubTab === 'OUTSIDE'
+                'flex items-center justify-center gap-1 py-2 px-1.5 text-[11px] sm:text-xs font-bold rounded-lg transition-all cursor-pointer min-h-[44px] min-w-0',
+                riwayatSubTab === 'ARCHIVE'
                   ? 'bg-white text-emerald-950 shadow-xs'
                   : 'text-zinc-600 hover:text-zinc-900'
               )}
             >
-              <Activity className="w-4 h-4 text-emerald-700" />
-              <span>Santri di Luar</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold leading-none">
+              <History className="hidden min-[410px]:block w-3.5 h-3.5 text-emerald-700 shrink-0" />
+              <span className="truncate">Semua Izin</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={riwayatSubTab === 'OUTSIDE'}
+              onClick={() => setRiwayatSubTab('OUTSIDE')}
+              className={cn(
+                'flex items-center justify-center gap-1 py-2 px-1.5 text-[11px] sm:text-xs font-bold rounded-lg transition-all cursor-pointer min-h-[44px] min-w-0',
+                riwayatSubTab === 'OUTSIDE'
+                  ? 'bg-white text-emerald-950 shadow-xs'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              )}
+            >
+              <Activity className="hidden min-[410px]:block w-3.5 h-3.5 text-emerald-700 shrink-0" />
+              <span className="truncate">Di Luar</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold leading-none tabular-nums shrink-0">
                 {currentlyOutside.length}
               </span>
             </button>
             <button
               type="button"
-              onClick={() => setMonitorSubTab('LATE')}
+              role="tab"
+              aria-selected={riwayatSubTab === 'LATE'}
+              onClick={() => setRiwayatSubTab('LATE')}
               className={cn(
-                'flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer min-h-[44px]',
-                monitorSubTab === 'LATE'
+                'flex items-center justify-center gap-1 py-2 px-1.5 text-[11px] sm:text-xs font-bold rounded-lg transition-all cursor-pointer min-h-[44px] min-w-0',
+                riwayatSubTab === 'LATE'
                   ? 'bg-white text-rose-950 shadow-xs'
                   : 'text-zinc-600 hover:text-zinc-900'
               )}
             >
-              <AlertTriangle className={cn('w-4 h-4', latePermissions.length > 0 ? 'text-rose-600' : 'text-zinc-500')} />
-              <span>Keterlambatan & Denda</span>
+              <AlertTriangle
+                className={cn(
+                  'hidden min-[410px]:block w-3.5 h-3.5 shrink-0',
+                  latePermissions.length > 0 ? 'text-rose-600' : 'text-zinc-500'
+                )}
+              />
+              <span className="truncate">Terlambat</span>
               {latePermissions.length > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold leading-none">
+                <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold leading-none tabular-nums shrink-0">
                   {latePermissions.length}
                 </span>
               )}
             </button>
           </div>
 
-          {monitorSubTab === 'OUTSIDE' ? (
+          {riwayatSubTab === 'ARCHIVE' ? (
+            <HistoryView
+              permissions={permissions.filter((p) => p.status !== 'PENDING_WALI_KELAS')}
+              title="Arsip Perizinan Seluruh Santri"
+              description="Rekapitulasi izin keluar dan kepulangan seluruh santri asrama yang telah diproses."
+              activeRole={currentUser.role}
+              actorName={currentUser.name}
+              canEditDelete={true}
+              emptyTitle="Belum Ada Arsip Perizinan Santri"
+              emptySubtitle="Seluruh perizinan santri yang telah selesai diverifikasi atau diputuskan akan tercatat di sini."
+              onRefresh={onRefresh}
+              onPreviewSurat={onPreviewSurat}
+            />
+          ) : riwayatSubTab === 'OUTSIDE' ? (
             <div className="space-y-3">
           <div className="rounded-xl bg-gradient-to-r from-emerald-800 to-emerald-950 p-3.5 sm:p-4 text-white shadow-xs">
             <div className="flex items-center justify-between gap-3">
@@ -1142,21 +1190,6 @@ export function KepalaAsramaView({
           onStudentsUpdated={onStudentsUpdated}
           isUploadModalOpen={isUploadModalOpen}
           setIsUploadModalOpen={setIsUploadModalOpen}
-        />
-      )}
-
-      {/* Tab: RIWAYAT (Semua Izin Pondok) */}
-      {activeTab === 'RIWAYAT' && (
-        <HistoryView
-          permissions={permissions.filter((p) => p.status !== 'PENDING_WALI_KELAS')}
-          title="Arsip Perizinan Seluruh Santri"
-          description="Rekapitulasi izin keluar dan kepulangan seluruh santri asrama yang telah diproses."
-          activeRole={currentUser.role}
-          actorName={currentUser.name}
-          canEditDelete={true}
-          emptyTitle="Belum Ada Arsip Perizinan Santri"
-          emptySubtitle="Seluruh perizinan santri yang telah selesai diverifikasi atau diputuskan akan tercatat di sini."
-          onRefresh={onRefresh}
         />
       )}
     </div>
