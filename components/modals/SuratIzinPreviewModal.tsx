@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Permission } from '@/lib/types';
+import { Permission, DigitalSignatureData } from '@/lib/types';
 import { formatDateTime, formatDateOnly } from '@/lib/utils';
 import {
   Dialog,
@@ -25,7 +25,23 @@ export function SuratIzinPreviewModal({
   permission,
 }: SuratIzinPreviewModalProps) {
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [signatureData, setSignatureData] = useState<DigitalSignatureData | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetch('/api/settings?key=official_digital_signature')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.value?.imageData) {
+            setSignatureData(data.value);
+          } else {
+            setSignatureData(null);
+          }
+        })
+        .catch((err) => console.error('Gagal memuat ttd digital:', err));
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (permission) {
@@ -120,22 +136,24 @@ export function SuratIzinPreviewModal({
             {/* KOP SURAT RESMI SMAIT IHSANUL FIKRI */}
             <div className="border-b-4 border-double border-zinc-900 pb-3 mb-5 text-center">
               <div className="flex items-center justify-center gap-4 mb-2">
-                <div className="h-14 w-14 rounded-full bg-emerald-900 text-white flex items-center justify-center font-serif font-black text-xl border-2 border-emerald-600 print:border-zinc-900">
-                  IF
-                </div>
+                <img
+                  src="/logo-smait.png"
+                  alt="Logo SMAIT Ihsanul Fikri"
+                  className="h-16 w-auto object-contain shrink-0"
+                />
                 <div>
-                  <h3 className="text-xs sm:text-sm font-semibold tracking-wider text-zinc-700 uppercase">
-                    Yayasan Ihsanul Fikri Magelang
+                  <h3 className="text-xs sm:text-sm font-bold tracking-wider text-zinc-800 uppercase font-sans">
+                    YAYASAN TARBIYATUL MUKMIN PABELAN
                   </h3>
                   <h1 className="text-base sm:text-xl font-black text-zinc-950 uppercase tracking-tight font-serif">
-                    SMAIT Ihsanul Fikri Pabelan
+                    SMAIT IHSANUL FIKRI MUNGKID
                   </h1>
-                  <p className="text-[10px] text-zinc-600">
+                  <p className="text-[10px] sm:text-[11px] text-zinc-600 font-medium">
                     Islamic Boarding School &bull; Akreditasi A &bull; NSS: 302030811045 &bull; NPSN: 20338781
                   </p>
                 </div>
               </div>
-              <p className="text-[9px] text-zinc-500 italic">
+              <p className="text-[9.5px] text-zinc-500 italic">
                 Alamat: Jl. Pabelan I, Desa Pabelan, Kec. Mungkid, Kab. Magelang, Jawa Tengah 56512 | Telp: (0293) 782444
               </p>
             </div>
@@ -152,7 +170,7 @@ export function SuratIzinPreviewModal({
 
             {/* PENGANTAR */}
             <p className="text-xs text-zinc-800 leading-relaxed mb-4">
-              Yang bertanda tangan di bawah ini menerangkan bahwa pihak pengasuhan / perizinan SMAIT Ihsanul Fikri Pabelan memberikan izin kepada santri:
+              Yang bertanda tangan di bawah ini menerangkan bahwa pihak pengasuhan / perizinan SMAIT Ihsanul Fikri Mungkid memberikan izin kepada santri:
             </p>
 
             {/* TABEL DATA SANTRI */}
@@ -291,14 +309,28 @@ export function SuratIzinPreviewModal({
                 <p className="text-zinc-600 mb-1">
                   Magelang, {formatDateOnly(permission.approvedAt || permission.createdAt)}
                 </p>
-                <p className="font-semibold text-zinc-700 mb-12">
+                <p className="font-semibold text-zinc-700 mb-1">
                   Mengetahui & Menyetujui,
                 </p>
+
+                {/* Tanda Tangan Digital Otomatis Ustadz Anton */}
+                {signatureData?.imageData ? (
+                  <div className="h-16 flex items-center justify-end my-1">
+                    <img
+                      src={signatureData.imageData}
+                      alt={`Tanda Tangan ${signatureData.signerName || 'Ustadz Anton'}`}
+                      className="h-16 max-w-[150px] object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="h-14" />
+                )}
+
                 <p className="font-bold text-zinc-950 underline text-sm">
-                  {permission.approvedByName || 'Wali Kelas / Pengasuhan'}
+                  {signatureData?.signerName || permission.approvedByName || 'Anton, M.Hum., Gr.'}
                 </p>
                 <p className="text-[10px] text-zinc-500 font-medium">
-                  Pengasuhan Santri SMAIT Ihsanul Fikri
+                  {signatureData?.signerTitle || 'Penanggung Jawab Perizinan SMAIT Ihsanul Fikri'}
                 </p>
               </div>
             </div>

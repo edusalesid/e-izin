@@ -27,12 +27,7 @@ export type PermissionStatus =
   | 'KEMBALI_TERLAMBAT'
   | 'CANCELLED';
 
-export interface LateFineSettings {
-  mode: 'PER_JAM' | 'FLAT';
-  ratePerUnit: number;
-  gracePeriodMinutes: number;
-  maxFineAmount: number;
-}
+
 
 export interface Student {
   id: string;
@@ -160,3 +155,13 @@ export interface LateFineSettings {
   gracePeriodMinutes: number;
   maxFineAmount: number;
 }
+
+export interface DigitalSignatureData {
+  imageData: string;
+  signerName: string;
+  signerTitle?: string;
+  updatedAt?: string;
+}
+
+
+

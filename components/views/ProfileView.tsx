@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { AuthSession, Student, Permission } from '@/lib/types';
+import React, { useState, useEffect, useRef } from 'react';
+import { AuthSession, Student, Permission, DigitalSignatureData } from '@/lib/types';
 import {
   User,
   ShieldCheck,
@@ -22,6 +22,12 @@ import {
   ExternalLink,
   Bell,
   BellRing,
+  FileSignature,
+  PenTool,
+  Trash2,
+  Upload,
+  Eraser,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -67,6 +73,203 @@ export function ProfileView({
   const [isUpdatingContact, setIsUpdatingContact] = useState(false);
   const [securityMessage, setSecurityMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [contactMessage, setContactMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Khusus Akun Ustadz Anton / Super Admin: Manajemen TTD Digital Surat Izin
+  const isAntonOrAdmin =
+    session.user?.username?.toLowerCase() === 'anton' ||
+    session.role === 'SUPER_ADMIN';
+
+  const [digitalSignature, setDigitalSignature] = useState<DigitalSignatureData | null>(null);
+  const [signatureMode, setSignatureMode] = useState<'UPLOAD' | 'CANVAS'>('UPLOAD');
+  const [signerName, setSignerName] = useState(session.user?.name || 'Anton, M.Hum., Gr.');
+  const [signerTitle, setSignerTitle] = useState('Penanggung Jawab Perizinan SMAIT Ihsanul Fikri');
+  const [previewSignature, setPreviewSignature] = useState<string | null>(null);
+  const [isSavingSignature, setIsSavingSignature] = useState(false);
+  const [isDeletingSignature, setIsDeletingSignature] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    if (isAntonOrAdmin) {
+      fetch('/api/settings?key=official_digital_signature')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.value?.imageData) {
+            setDigitalSignature(data.value);
+            if (data.value.signerName) setSignerName(data.value.signerName);
+            if (data.value.signerTitle) setSignerTitle(data.value.signerTitle);
+            setPreviewSignature(data.value.imageData);
+          }
+        })
+        .catch((err) => console.error('Gagal mengambil ttd digital:', err));
+    }
+  }, [isAntonOrAdmin]);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Format berkas tidak sesuai', {
+        description: 'Silakan pilih gambar dengan format PNG, JPG, atau WEBP.',
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      const img = new window.Image();
+      img.onload = () => {
+        const maxWidth = 500;
+        const scale = img.width > maxWidth ? maxWidth / img.width : 1;
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const compressed = canvas.toDataURL('image/png');
+          setPreviewSignature(compressed);
+          toast.success('Gambar tanda tangan berhasil dimuat!');
+        } else {
+          setPreviewSignature(dataUrl);
+        }
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    setIsDrawing(true);
+    const rect = canvas.getBoundingClientRect();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#0f172a';
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+    const canvas = canvasRef.current;
+    if (canvas) {
+      setPreviewSignature(canvas.toDataURL('image/png'));
+    }
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setPreviewSignature(null);
+  };
+
+  const handleSaveSignature = async () => {
+    if (!previewSignature) {
+      toast.error('Belum ada tanda tangan', {
+        description: 'Silakan upload gambar tanda tangan atau buat coretan tanda tangan pada canvas.',
+      });
+      return;
+    }
+
+    setIsSavingSignature(true);
+    try {
+      const payload: DigitalSignatureData = {
+        imageData: previewSignature,
+        signerName: signerName.trim() || 'Anton, M.Hum., Gr.',
+        signerTitle: signerTitle.trim() || 'Penanggung Jawab Perizinan SMAIT Ihsanul Fikri',
+        updatedAt: new Date().toISOString(),
+      };
+
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: 'official_digital_signature',
+          value: payload,
+        }),
+      });
+
+      if (!res.ok) throw new Error('Gagal menyimpan tanda tangan');
+
+      setDigitalSignature(payload);
+      toast.success('Tanda Tangan Digital Berhasil Disimpan! ✍️', {
+        description: 'Tanda tangan resmi otomatis disematkan pada setiap Surat Izin Santri (PDF/Cetak).',
+      });
+      onProfileUpdated?.();
+    } catch (err: any) {
+      toast.error('Gagal Menyimpan', {
+        description: err.message || 'Terjadi kesalahan sistem saat menyimpan tanda tangan.',
+      });
+    } finally {
+      setIsSavingSignature(false);
+    }
+  };
+
+  const handleDeleteSignature = async () => {
+    if (!confirm('Apakah Anda yakin ingin menghapus tanda tangan digital resmi ini?')) return;
+
+    setIsDeletingSignature(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: 'official_digital_signature',
+          value: null,
+        }),
+      });
+
+      if (!res.ok) throw new Error('Gagal menghapus tanda tangan');
+
+      setDigitalSignature(null);
+      setPreviewSignature(null);
+      clearCanvas();
+      toast.success('Tanda tangan digital berhasil dihapus.');
+      onProfileUpdated?.();
+    } catch (err: any) {
+      toast.error('Gagal Menghapus', {
+        description: err.message || 'Terjadi kendala saat menghapus tanda tangan.',
+      });
+    } finally {
+      setIsDeletingSignature(false);
+    }
+  };
 
   // Status dan pengujian Web / PWA Notification
   const [notifStatus, setNotifStatus] = useState<string>('default');
@@ -549,6 +752,222 @@ export function ProfileView({
             <div className="flex justify-between py-1">
               <span className="text-zinc-500">Institusi</span>
               <span className="font-semibold text-zinc-900">SMAIT Ihsanul Fikri</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Khusus Akun Ustadz Anton / Super Admin: Tanda Tangan Digital Resmi */}
+      {isAntonOrAdmin && (
+        <Card className="border-emerald-200/90 bg-gradient-to-b from-emerald-50/30 to-white shadow-xs">
+          <CardHeader className="pb-3 border-b border-zinc-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileSignature className="w-4 h-4 text-emerald-700" />
+                <CardTitle className="text-sm font-bold text-zinc-900">
+                  Tanda Tangan Digital Resmi (Surat Izin Santri)
+                </CardTitle>
+              </div>
+              <Badge
+                variant="outline"
+                className={`text-[10px] font-semibold ${
+                  digitalSignature?.imageData
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                    : 'border-amber-300 bg-amber-50 text-amber-800'
+                }`}
+              >
+                {digitalSignature?.imageData ? '✓ Terpasang di PDF' : 'Belum Terpasang'}
+              </Badge>
+            </div>
+            <CardDescription className="text-xs text-zinc-600">
+              Tanda tangan digital ini otomatis disematkan pada setiap Surat Izin Santri resmi (format PDF / Cetak).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-3.5 space-y-4">
+            {/* Pratinjau Tanda Tangan yang Sedang Aktif */}
+            {previewSignature ? (
+              <div className="rounded-xl border border-zinc-200 bg-white p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs text-zinc-500 pb-1 border-b border-zinc-100">
+                  <span className="font-medium">Pratinjau Tanda Tangan:</span>
+                  {digitalSignature?.imageData && (
+                    <span className="text-[10px] text-emerald-700 font-semibold">
+                      Tersimpan di Sistem
+                    </span>
+                  )}
+                </div>
+                <div className="h-24 w-full bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:8px_8px] rounded-lg border border-zinc-100 flex items-center justify-center overflow-hidden p-2">
+                  <img
+                    src={previewSignature}
+                    alt="Pratinjau Tanda Tangan"
+                    className="max-h-full max-w-[200px] object-contain drop-shadow-xs"
+                  />
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[11px] text-zinc-600">
+                    Oleh: <strong>{signerName}</strong>
+                  </span>
+                  {digitalSignature?.imageData && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleDeleteSignature}
+                      disabled={isDeletingSignature}
+                      className="h-7 px-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 text-xs cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-1" />
+                      <span>{isDeletingSignature ? 'Menghapus...' : 'Hapus TTD'}</span>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50/70 p-4 text-center space-y-1">
+                <PenTool className="w-6 h-6 text-zinc-400 mx-auto" />
+                <p className="text-xs font-semibold text-zinc-700">
+                  Belum ada tanda tangan digital yang tersimpan
+                </p>
+                <p className="text-[11px] text-zinc-500">
+                  Upload file gambar tanda tangan atau coret langsung di layar bawah ini.
+                </p>
+              </div>
+            )}
+
+            {/* Pilihan Metode: Upload Gambar atau Gambar di Layar */}
+            <div className="space-y-3">
+              <div className="flex rounded-lg bg-zinc-100 p-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setSignatureMode('UPLOAD')}
+                  className={`flex-1 py-1.5 px-3 rounded-md font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    signatureMode === 'UPLOAD'
+                      ? 'bg-white text-zinc-900 shadow-2xs'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  <Upload className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Upload File Gambar</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSignatureMode('CANVAS')}
+                  className={`flex-1 py-1.5 px-3 rounded-md font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    signatureMode === 'CANVAS'
+                      ? 'bg-white text-zinc-900 shadow-2xs'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  <PenTool className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Coret di Layar (Touch)</span>
+                </button>
+              </div>
+
+              {signatureMode === 'UPLOAD' ? (
+                <div className="space-y-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png, image/jpeg, image/webp"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="rounded-lg border-2 border-dashed border-emerald-300 hover:border-emerald-500 bg-emerald-50/40 hover:bg-emerald-50/80 p-4 text-center cursor-pointer transition"
+                  >
+                    <Upload className="w-6 h-6 text-emerald-700 mx-auto mb-1.5" />
+                    <p className="text-xs font-bold text-emerald-950">
+                      Klik untuk Memilih File Tanda Tangan
+                    </p>
+                    <p className="text-[11px] text-emerald-800/80 mt-0.5">
+                      Disarankan file PNG berlatar transparan / putih (Maks. 2 MB)
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="relative rounded-lg border border-zinc-300 bg-white overflow-hidden shadow-inner">
+                    <canvas
+                      ref={canvasRef}
+                      width={400}
+                      height={160}
+                      onMouseDown={startDrawing}
+                      onMouseMove={draw}
+                      onMouseUp={stopDrawing}
+                      onMouseLeave={stopDrawing}
+                      onTouchStart={startDrawing}
+                      onTouchMove={draw}
+                      onTouchEnd={stopDrawing}
+                      className="w-full h-40 touch-none cursor-crosshair bg-white"
+                    />
+                    <div className="absolute top-2 right-2 flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={clearCanvas}
+                        className="h-7 px-2 text-[11px] bg-white/90 hover:bg-white text-zinc-700 shadow-xs cursor-pointer border border-zinc-200"
+                      >
+                        <Eraser className="w-3 h-3 mr-1" />
+                        <span>Hapus Coretan</span>
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-[10.5px] text-zinc-500 italic">
+                    Gunakan jari atau stylus pada smartphone/tablet untuk tanda tangan langsung.
+                  </p>
+                </div>
+              )}
+
+              {/* Data Identitas Penandatangan */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                <div className="space-y-1">
+                  <Label htmlFor="signer-name-input" className="text-xs">
+                    Nama Penandatangan
+                  </Label>
+                  <Input
+                    id="signer-name-input"
+                    type="text"
+                    value={signerName}
+                    onChange={(e) => setSignerName(e.target.value)}
+                    placeholder="Contoh: Anton, M.Hum., Gr."
+                    className="h-9 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="signer-title-input" className="text-xs">
+                    Jabatan Kedinasan
+                  </Label>
+                  <Input
+                    id="signer-title-input"
+                    type="text"
+                    value={signerTitle}
+                    onChange={(e) => setSignerTitle(e.target.value)}
+                    placeholder="Contoh: Penanggung Jawab Perizinan"
+                    className="h-9 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Tombol Simpan */}
+              <Button
+                type="button"
+                onClick={handleSaveSignature}
+                disabled={isSavingSignature || !previewSignature}
+                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs h-10 rounded-xl shadow-xs cursor-pointer"
+              >
+                {isSavingSignature ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    <span>Menyimpan Tanda Tangan...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5 mr-1.5" />
+                    <span>Simpan & Terapkan ke PDF Surat Izin</span>
+                  </>
+                )}
+              </Button>
             </div>
           </CardContent>
         </Card>

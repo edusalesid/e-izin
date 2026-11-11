@@ -37,13 +37,12 @@ export function Navbar({
         <div className="flex items-center gap-2 min-w-0">
           <div className="relative h-9 w-24 shrink-0 overflow-hidden">
             <Image
-              src="https://infosmait.ihsanulfikri.sch.id/wp-content/uploads/2026/10/Untitled-design-768x431.png"
+              src="/logo-smait.png"
               alt="Logo SMAIT Ihsanul Fikri"
               fill
               sizes="100px"
               className="object-contain object-left"
               priority
-              referrerPolicy="no-referrer"
             />
           </div>
           <div className="border-l border-zinc-200 pl-2 min-w-0">
