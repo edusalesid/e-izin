@@ -63,13 +63,10 @@ export function SuratIzinPreviewModal({
       return;
     }
 
+    const officialBaseUrl = 'https://www.perizinan-ihsanulfikri.web.id';
     const configuredBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, '');
-    const origin =
-      configuredBaseUrl ||
-      (typeof window !== 'undefined' ? window.location.origin : '');
-    const nextVerifyUrl = origin
-      ? `${origin}/verifikasi/${permission.id}`
-      : `/verifikasi/${permission.id}`;
+    const origin = configuredBaseUrl || officialBaseUrl;
+    const nextVerifyUrl = `${origin}/verifikasi/${permission.id}`;
 
     setVerifyUrl(nextVerifyUrl);
 
