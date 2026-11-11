@@ -1,6 +1,6 @@
 import React from 'react';
 import { PermissionStatus } from '@/lib/types';
-import { Clock, CheckCircle2, XCircle, LogOut, CheckCheck, AlertTriangle } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle, LogOut, CheckCheck, AlertTriangle, Ban } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
@@ -24,24 +24,14 @@ export function StatusBadge({ status, className, showIcon = true }: StatusBadgeP
       );
 
     case 'APPROVED_WALI_KELAS':
-      return (
-        <Badge
-          variant="approved"
-          className={cn('font-medium text-xs', className)}
-        >
-          {showIcon && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />}
-          <span>Disetujui (Siap Keluar)</span>
-        </Badge>
-      );
-
     case 'SEDANG_DI_LUAR':
       return (
         <Badge
           variant="active"
-          className={cn('font-medium text-xs', className)}
+          className={cn('font-medium text-xs bg-emerald-50 text-emerald-800 border-emerald-200', className)}
         >
-          {showIcon && <LogOut className="w-3.5 h-3.5 text-blue-700" />}
-          <span>Sedang di Luar</span>
+          {showIcon && <LogOut className="w-3.5 h-3.5 text-emerald-700" />}
+          <span>Di Luar Asrama</span>
         </Badge>
       );
 
@@ -75,6 +65,17 @@ export function StatusBadge({ status, className, showIcon = true }: StatusBadgeP
         >
           {showIcon && <XCircle className="w-3.5 h-3.5 text-rose-700" />}
           <span>Ditolak</span>
+        </Badge>
+      );
+
+    case 'CANCELLED':
+      return (
+        <Badge
+          variant="outline"
+          className={cn('font-medium text-xs bg-zinc-100 text-zinc-700 border-zinc-300', className)}
+        >
+          {showIcon && <Ban className="w-3.5 h-3.5 text-zinc-600" />}
+          <span>Izin Dibatalkan</span>
         </Badge>
       );
 

@@ -24,11 +24,21 @@ import {
   LogOut,
   SlidersHorizontal,
   Banknote,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { EditPermissionModal } from '@/components/modals/EditPermissionModal';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { PermissionCardSkeleton } from '@/components/skeletons/AppSkeletons';
@@ -43,6 +53,8 @@ interface HistoryViewProps {
   onRefresh?: () => void;
   onPayFine?: (id: string) => Promise<void> | void;
   isLoading?: boolean;
+  canEditDelete?: boolean;
+  actorName?: string;
 }
 
 function formatScheduleRange(startIso?: string, endIso?: string): string {
@@ -108,6 +120,8 @@ export function HistoryView({
   onRefresh,
   onPayFine,
   isLoading = false,
+  canEditDelete,
+  actorName = 'Admin Asrama',
 }: HistoryViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [classFilter, setClassFilter] = useState<string>('ALL');
@@ -115,6 +129,13 @@ export function HistoryView({
   const [categoryFilter, setCategoryFilter] = useState<'ALL' | PermissionCategory>('ALL');
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [payingId, setPayingId] = useState<string | null>(null);
+
+  // State Fitur Edit & Hapus Arsip Perizinan
+  const [editPermission, setEditPermission] = useState<Permission | null>(null);
+  const [deleteConfirmPermission, setDeleteConfirmPermission] = useState<Permission | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const canManage = canEditDelete ?? (activeRole === 'KEPALA_ASRAMA' || activeRole === 'SUPER_ADMIN');
 
   // Daftar kelas unik dari seluruh riwayat
   const uniqueClasses = useMemo(() => {
@@ -128,6 +149,42 @@ export function HistoryView({
       ...prev,
       [id]: !prev[id],
     }));
+  };
+
+  // Handler Hapus Arsip Perizinan Permanen
+  const handleDeletePermission = async () => {
+    if (!deleteConfirmPermission) return;
+    try {
+      setIsDeleting(true);
+      const res = await fetch(`/api/permissions?id=${deleteConfirmPermission.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: deleteConfirmPermission.id,
+          actorName: actorName || 'Admin Asrama',
+          actorRole: activeRole,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Gagal menghapus arsip perizinan.');
+      }
+
+      toast.success('Arsip Izin Berhasil Dihapus', {
+        description: `Data perizinan ananda ${deleteConfirmPermission.studentName} telah dihapus dari sistem.`,
+      });
+
+      setDeleteConfirmPermission(null);
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      console.error('Delete permission failed:', err);
+      toast.error('Gagal Menghapus Izin', {
+        description: err.message || 'Terjadi kesalahan sistem saat menghapus arsip perizinan.',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // Handler Pelunasan Denda Keterlambatan
@@ -686,16 +743,42 @@ export function HistoryView({
                   </div>
                 )}
 
-                {/* Footer Bar: Tanggal Pengajuan & Toggle Rincian */}
-                <div className="pt-1.5 border-t border-zinc-100 flex items-center justify-between text-xs">
-                  <span className="text-[10px] text-zinc-400">
-                    Diajukan: {formatDateOnly(perm.createdAt)}
-                  </span>
+                {/* Footer Bar: Tanggal Pengajuan, Aksi Edit/Hapus & Toggle Rincian */}
+                <div className="pt-2 border-t border-zinc-100 flex items-center justify-between gap-2 text-xs flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] text-zinc-400">
+                      Diajukan: {formatDateOnly(perm.createdAt)}
+                    </span>
+
+                    {/* Tombol Edit & Hapus di Arsip Perizinan */}
+                    {canManage && (
+                      <div className="flex items-center gap-1.5 ml-1">
+                        <button
+                          type="button"
+                          onClick={() => setEditPermission(perm)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 font-bold text-[11px] shadow-2xs transition cursor-pointer"
+                          title="Edit rincian data perizinan santri ini"
+                        >
+                          <Edit2 className="w-3 h-3 text-amber-700" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirmPermission(perm)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-[11px] shadow-2xs transition cursor-pointer"
+                          title="Hapus data izin santri ini dari arsip"
+                        >
+                          <Trash2 className="w-3 h-3 text-rose-600" />
+                          <span>Hapus</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
 
                   <button
                     type="button"
                     onClick={() => toggleDetails(perm.id)}
-                    className="text-[11px] font-semibold text-zinc-600 hover:text-zinc-900 flex items-center gap-1 cursor-pointer py-0.5 px-1.5 rounded hover:bg-zinc-100 transition-colors"
+                    className="text-[11px] font-semibold text-zinc-600 hover:text-zinc-900 flex items-center gap-1 cursor-pointer py-0.5 px-1.5 rounded hover:bg-zinc-100 transition-colors ml-auto"
                   >
                     <span>{isExpanded ? 'Tutup Rincian' : 'Lihat Rincian'}</span>
                     {isExpanded ? (
@@ -763,6 +846,64 @@ export function HistoryView({
           })}
         </div>
       )}
+
+      {/* Modal Edit Data Perizinan Santri */}
+      <EditPermissionModal
+        isOpen={!!editPermission}
+        onClose={() => setEditPermission(null)}
+        permission={editPermission}
+        onSuccess={() => {
+          if (onRefresh) onRefresh();
+        }}
+        actorName={actorName}
+        actorRole={activeRole}
+      />
+
+      {/* Dialog Konfirmasi Hapus Data Perizinan */}
+      <Dialog
+        open={!!deleteConfirmPermission}
+        onOpenChange={(open) => !open && !isDeleting && setDeleteConfirmPermission(null)}
+      >
+        <DialogContent className="max-w-md p-5 bg-white rounded-2xl">
+          <DialogHeader>
+            <div className="h-10 w-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center mb-2">
+              <Trash2 className="w-5 h-5 text-rose-600" />
+            </div>
+            <DialogTitle className="text-base font-bold text-zinc-900">
+              Hapus Arsip Izin Santri?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-zinc-600 leading-relaxed mt-1">
+              Apakah Anda yakin ingin menghapus data perizinan santri{' '}
+              <strong className="text-zinc-900 font-bold">{deleteConfirmPermission?.studentName}</strong>{' '}
+              (NIS: {deleteConfirmPermission?.studentNis}, Kelas {deleteConfirmPermission?.className})?
+              <br />
+              <span className="text-rose-600 font-medium mt-1.5 block">
+                Tindakan ini akan menghapus arsip izin dan seluruh catatan riwayat log gerbang secara permanen dari sistem.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="pt-3 border-t border-zinc-100 flex items-center justify-end gap-2 mt-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isDeleting}
+              onClick={() => setDeleteConfirmPermission(null)}
+              className="h-9 px-3.5 rounded-xl border-zinc-300 text-zinc-700 font-semibold text-xs"
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              disabled={isDeleting}
+              onClick={handleDeletePermission}
+              className="h-9 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{isDeleting ? 'Menghapus...' : 'Ya, Hapus Arsip'}</span>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useStaff } from '@/hooks/useStaff';
 import { StatusBadge } from '@/components/cards/StatusBadge';
+import { SuratIzinPreviewModal } from '@/components/modals/SuratIzinPreviewModal';
 import { formatDateTime, formatDuration } from '@/lib/utils';
 import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
@@ -24,16 +25,18 @@ import {
   Phone,
   RefreshCw,
   CheckCircle2,
+  Ban,
+  Printer,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PermissionDetailSkeleton } from '@/components/skeletons/AppSkeletons';
+import { Button } from '@/components/ui/button';
 
 export default function PermissionDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const id = params?.id as string;
 
-  const { session, permissions, refreshData } = useStaff();
+  const { session, refreshData } = useStaff();
 
   const [permission, setPermission] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
@@ -42,6 +45,14 @@ export default function PermissionDetailPage() {
   // Rejection State
   const [isRejecting, setIsRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+
+  // Cancellation State (Requirement 2)
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+
+  // Preview / Export PDF Modal (Requirement 4)
+  const [isPreviewSuratOpen, setIsPreviewSuratOpen] = useState(false);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchDetail = async () => {
@@ -73,8 +84,8 @@ export default function PermissionDetailPage() {
         body: JSON.stringify({
           id,
           status: 'APPROVED_WALI_KELAS',
-          actorName: session?.user?.name || 'Wali Kelas',
-          actorRole: 'WALI_KELAS',
+          actorName: session?.user?.name || 'Wali Kelas / Super Admin',
+          actorRole: session?.role || 'WALI_KELAS',
           actorId: session?.user?.id,
         }),
       });
@@ -85,7 +96,7 @@ export default function PermissionDetailPage() {
       }
 
       toast.success('Izin Berhasil Disetujui', {
-        description: `Izin untuk ${permission?.studentName || 'santri'} berhasil disetujui. Siap keluar gerbang.`,
+        description: `Izin untuk ${permission?.studentName || 'santri'} disetujui. Santri otomatis tercatat sudah keluar asrama.`,
       });
 
       try {
@@ -98,6 +109,7 @@ export default function PermissionDetailPage() {
       } catch {}
       await refreshData();
       await fetchDetail();
+      setIsPreviewSuratOpen(true);
     } catch (err: any) {
       console.error('Approve error:', err);
       toast.error('Gagal Menyetujui Izin', {
@@ -109,7 +121,11 @@ export default function PermissionDetailPage() {
   };
 
   const handleReject = async () => {
-    if (!rejectReason.trim()) return;
+    if (!rejectReason.trim()) {
+      toast.error('Alasan Penolakan Wajib Diisi');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const res = await fetch('/api/permissions', {
@@ -118,8 +134,8 @@ export default function PermissionDetailPage() {
         body: JSON.stringify({
           id,
           status: 'REJECTED',
-          actorName: session?.user?.name || 'Wali Kelas',
-          actorRole: 'WALI_KELAS',
+          actorName: session?.user?.name || 'Wali Kelas / Super Admin',
+          actorRole: session?.role || 'WALI_KELAS',
           actorId: session?.user?.id,
           rejectionReason: rejectReason.trim(),
         }),
@@ -130,13 +146,13 @@ export default function PermissionDetailPage() {
         throw new Error(errorData.error || 'Gagal menolak izin');
       }
 
-      toast.error('Izin Berhasil Ditolak', {
-        description: `Izin santri ditolak dengan alasan: ${rejectReason.trim()}`,
+      toast.error('Izin Ditolak', {
+        description: `Izin untuk ${permission?.studentName || 'santri'} telah ditolak.`,
       });
 
+      setIsRejecting(false);
       await refreshData();
       await fetchDetail();
-      setIsRejecting(false);
     } catch (err: any) {
       console.error('Reject error:', err);
       toast.error('Gagal Menolak Izin', {
@@ -147,7 +163,8 @@ export default function PermissionDetailPage() {
     }
   };
 
-  const handleCheckOut = async () => {
+  // Pembatalan Izin oleh Guru / Musrif manapun (Requirement 2)
+  const handleCancel = async () => {
     setIsSubmitting(true);
     try {
       const res = await fetch('/api/permissions', {
@@ -155,29 +172,30 @@ export default function PermissionDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id,
-          status: 'SEDANG_DI_LUAR',
-          actorName: session?.user?.name || 'Pak Bambang (Pos Gerbang)',
-          actorRole: 'SATPAM',
+          status: 'CANCELLED',
+          actorName: session?.user?.name || 'Petugas Asrama',
+          actorRole: session?.role || 'USTADZ_UMUM',
           actorId: session?.user?.id,
-          actualDeparture: new Date().toISOString(),
+          cancelReason: cancelReason.trim() || 'Santri menyatakan batal izin.',
         }),
       });
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Gagal verifikasi check-out gerbang');
+        throw new Error(errorData.error || 'Gagal membatalkan izin');
       }
 
-      toast.success('Check-out Gerbang Berhasil', {
-        description: `Santri ${permission?.studentName || ''} telah keluar gerbang pos keamanan.`,
+      toast.success('Izin Berhasil Dibatalkan', {
+        description: `Izin untuk ${permission?.studentName} berhasil dibatalkan. Laporan otomatis terkirim ke Super Admin.`,
       });
 
+      setIsCancelling(false);
       await refreshData();
       await fetchDetail();
     } catch (err: any) {
-      console.error('Check-out error:', err);
-      toast.error('Gagal Check-Out Gerbang', {
-        description: err?.message || 'Terjadi kesalahan sistem saat verifikasi keluar.',
+      console.error('Cancel error:', err);
+      toast.error('Gagal Membatalkan Izin', {
+        description: err?.message || 'Terjadi kesalahan sistem saat membatalkan izin.',
       });
     } finally {
       setIsSubmitting(false);
@@ -193,10 +211,9 @@ export default function PermissionDetailPage() {
         body: JSON.stringify({
           id,
           status: 'KEMBALI_TEPAT_WAKTU',
-          actorName: session?.user?.name || 'Pak Bambang (Pos Gerbang)',
-          actorRole: 'SATPAM',
+          actorName: session?.user?.name || 'Musrif Asrama',
+          actorRole: session?.role || 'USTADZ_UMUM',
           actorId: session?.user?.id,
-          actualReturn: new Date().toISOString(),
         }),
       });
 
@@ -205,28 +222,10 @@ export default function PermissionDetailPage() {
         throw new Error(errorData.error || 'Gagal verifikasi kepulangan santri');
       }
 
-      const resJson = await res.json().catch(() => ({}));
-      const updated = resJson?.permission;
-      const isLate = updated?.status === 'KEMBALI_TERLAMBAT';
+      toast.success('Santri Berhasil Kembali', {
+        description: `Santri ${permission?.studentName || ''} berhasil diverifikasi kembali ke asrama.`,
+      });
 
-      if (isLate) {
-        toast.warning('Santri Kembali (Terlambat)', {
-          description: `Santri ${permission?.studentName || ''} tercatat terlambat (${updated?.lateDurationMinutes || 0} menit).`,
-        });
-      } else {
-        toast.success('Santri Berhasil Kembali', {
-          description: `Santri ${permission?.studentName || ''} berhasil dicek kembali ke pondok.`,
-        });
-      }
-
-      try {
-        confetti({
-          particleCount: 50,
-          spread: 60,
-          origin: { y: 0.6 },
-          colors: ['#047857', '#059669', '#10b981'],
-        });
-      } catch {}
       await refreshData();
       await fetchDetail();
     } catch (err: any) {
@@ -254,7 +253,7 @@ export default function PermissionDetailPage() {
           className="inline-flex items-center gap-1.5 rounded-xl bg-zinc-900 text-white px-4 py-2 text-xs font-bold mt-2"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Kembali ke Antrean</span>
+          <span>Kembali ke Beranda</span>
         </Link>
       </div>
     );
@@ -264,6 +263,7 @@ export default function PermissionDetailPage() {
   const isPendingWali = permission.status === 'PENDING_WALI_KELAS';
   const isApproved = permission.status === 'APPROVED_WALI_KELAS';
   const isOutside = permission.status === 'SEDANG_DI_LUAR';
+  const isCancelled = permission.status === 'CANCELLED';
 
   return (
     <div className="space-y-4">
@@ -274,7 +274,7 @@ export default function PermissionDetailPage() {
           className="inline-flex items-center gap-1.5 text-xs font-bold text-zinc-700 hover:text-emerald-800 transition cursor-pointer min-h-[36px]"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Kembali ke Daftar Pengajuan</span>
+          <span>Kembali ke Antrean</span>
         </Link>
         <span className="text-[10px] font-mono text-zinc-400">
           ID: {permission.id.substring(0, 14)}
@@ -316,13 +316,27 @@ export default function PermissionDetailPage() {
             {permission.reason}
           </div>
         </div>
+
+        {/* Action Button: Export PDF Surat Izin (Requirement 4) */}
+        {(isApproved || isOutside || permission.status === 'KEMBALI_TEPAT_WAKTU' || permission.status === 'KEMBALI_TERLAMBAT') && (
+          <div className="mt-3 pt-3 border-t border-zinc-100">
+            <Button
+              type="button"
+              onClick={() => setIsPreviewSuratOpen(true)}
+              className="w-full h-10 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Pratinjau & Export PDF Surat Izin</span>
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Jadwal & Realtime Waktu */}
       <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-xs space-y-3">
         <h2 className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
           <Calendar className="w-4 h-4 text-emerald-700" />
-          Rencana Waktu & Pos Gerbang
+          Rencana Waktu & Status Keberadaan
         </h2>
 
         <div className="grid grid-cols-2 gap-2 text-xs">
@@ -336,28 +350,18 @@ export default function PermissionDetailPage() {
           </div>
         </div>
 
-        {/* Realtime Gerbang Information */}
-        {(permission.actualDeparture || permission.actualReturn) && (
-          <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/40 p-3 space-y-1.5 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-zinc-600">Realisasi Keluar Gerbang:</span>
-              <strong className="text-zinc-900">{formatDateTime(permission.actualDeparture)}</strong>
+        {/* Realtime Status Keluar Asrama (Requirement 1: otomatis dianggap keluar asrama) */}
+        {(isOutside || isApproved) && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs space-y-1 text-emerald-950 font-medium">
+            <div className="flex items-center gap-1.5 font-bold text-emerald-900">
+              <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+              <span>Santri Otomatis Tercatat Sudah Keluar Asrama</span>
             </div>
-            {permission.actualReturn && (
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-600">Realisasi Kembali ke Pondok:</span>
-                <strong className="text-zinc-900">{formatDateTime(permission.actualReturn)}</strong>
-              </div>
-            )}
+            <p className="text-[11px] text-emerald-800 pl-5.5">
+              Persetujuan langsung mengaktifkan status santri di luar asrama.
+            </p>
           </div>
         )}
-
-        {permission.lateDurationMinutes && permission.lateDurationMinutes > 0 ? (
-          <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 flex items-center gap-2 text-xs text-rose-800 font-bold">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>Terlambat {formatDuration(permission.lateDurationMinutes)} dari rencana kepulangan.</span>
-          </div>
-        ) : null}
       </div>
 
       {/* Penjemput & Pemohon */}
@@ -394,19 +398,19 @@ export default function PermissionDetailPage() {
           )}
           {permission.rejectionReason && (
             <div className="rounded-lg bg-rose-50 border border-rose-200 p-2 text-rose-800 text-xs">
-              <strong>Alasan Penolakan:</strong> {permission.rejectionReason}
+              <strong>Catatan:</strong> {permission.rejectionReason}
             </div>
           )}
         </div>
       </div>
 
       {/* ROLE ACTION SECTION */}
-      {/* 1. Wali Kelas Approval Actions */}
-      {role === 'WALI_KELAS' && isPendingWali && (
+      {/* 1. Approval Actions (Wali Kelas / Kepala Asrama / Super Admin) */}
+      {(role === 'WALI_KELAS' || role === 'SUPER_ADMIN' || role === 'KEPALA_ASRAMA') && isPendingWali && (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4 shadow-xs space-y-3">
-          <h2 className="text-xs font-bold text-zinc-900">Keputusan Wali Kelas</h2>
+          <h2 className="text-xs font-bold text-zinc-900">Keputusan Persetujuan Izin</h2>
           <p className="text-[11px] text-zinc-600">
-            Silakan tinjau permohonan izin ini sebelum diteruskan ke pos gerbang satpam.
+            Begitu disetujui, santri otomatis dianggap sudah keluar asrama dan surat izin dapat langsung diekspor ke PDF.
           </p>
 
           {isRejecting ? (
@@ -460,40 +464,78 @@ export default function PermissionDetailPage() {
         </div>
       )}
 
-      {/* 2. Satpam Gate Actions */}
-      {role === 'SATPAM' && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4 shadow-xs space-y-3">
-          <h2 className="text-xs font-bold text-zinc-900">Aksi Pos Gerbang Satpam</h2>
+      {/* 2. Tombol Cancel / Batal Izin untuk Semua Musrif / Guru (Requirement 2) */}
+      {role !== 'ORANG_TUA' && !isCancelled && (isPendingWali || isApproved || isOutside) && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/40 p-4 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xs font-bold text-rose-950 flex items-center gap-1.5">
+                <Ban className="w-4 h-4 text-rose-600" />
+                <span>Pembatalan Izin Santri</span>
+              </h2>
+              <p className="text-[11px] text-zinc-600 mt-0.5">
+                Jika santri batal keluar/pulang dan dijumpai di asrama/sekolah, batalkan izin di sini. Super Admin akan menerima laporan detail.
+              </p>
+            </div>
+          </div>
 
-          {isApproved && (
-            <button
+          {isCancelling ? (
+            <div className="space-y-2.5 pt-1">
+              <textarea
+                rows={2}
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Tuliskan alasan pembatalan (misal: jemputan tidak datang, anak berubah pikiran)..."
+                className="w-full rounded-xl border border-rose-300 bg-white p-3 text-xs focus:ring-2 focus:ring-rose-200"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCancelling(false)}
+                  className="rounded-xl border border-zinc-300 bg-white py-2.5 text-xs font-semibold text-zinc-700 min-h-[40px]"
+                >
+                  Kembali
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={handleCancel}
+                  className="rounded-xl bg-rose-600 hover:bg-rose-700 py-2.5 text-xs font-bold text-white min-h-[40px] cursor-pointer"
+                >
+                  Konfirmasi Batalkan
+                </button>
+              </div>
+            </div>
+          ) : (
+            <Button
               type="button"
-              disabled={isSubmitting}
-              onClick={handleCheckOut}
-              className="w-full min-h-[48px] flex items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 py-3 px-4 text-xs font-bold text-white shadow-md shadow-emerald-800/20 active:scale-[0.98] transition cursor-pointer"
+              variant="outline"
+              onClick={() => setIsCancelling(true)}
+              className="w-full h-10 rounded-xl border-rose-300 text-rose-700 hover:bg-rose-100/60 font-bold text-xs flex items-center justify-center gap-2"
             >
-              <ArrowUpRight className="w-4 h-4 text-emerald-100" />
-              <span>Izinkan Keluar (Check-out Gerbang)</span>
-            </button>
+              <Ban className="w-4 h-4" />
+              <span>Batalkan Izin Santri (Anak Batal Keluar)</span>
+            </Button>
           )}
+        </div>
+      )}
 
-          {isOutside && (
-            <button
-              type="button"
-              disabled={isSubmitting}
-              onClick={handleCheckIn}
-              className="w-full min-h-[48px] flex items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 py-3 px-4 text-xs font-bold text-white shadow-md shadow-emerald-800/20 active:scale-[0.98] transition cursor-pointer"
-            >
-              <ShieldCheck className="w-4 h-4 text-emerald-100" />
-              <span>Konfirmasi Kembali (Check-in Gerbang)</span>
-            </button>
-          )}
-
-          {!isApproved && !isOutside && (
-            <p className="text-xs text-zinc-600">
-              Izin ini berstatus <strong className="text-zinc-900">{permission.status}</strong> dan tidak memerlukan tindakan gerbang saat ini.
-            </p>
-          )}
+      {/* 3. Konfirmasi Santri Kembali ke Asrama (Musrif / Guru / Satpam manapun) */}
+      {role !== 'ORANG_TUA' && isOutside && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4 shadow-xs space-y-2">
+          <h2 className="text-xs font-bold text-zinc-900">Konfirmasi Santri Kembali ke Asrama</h2>
+          <p className="text-[11px] text-zinc-600">
+            Dapat dilakukan oleh musrif, guru, atau satpam yang menjumpai santri tiba di asrama.
+          </p>
+          <Button
+            type="button"
+            disabled={isSubmitting}
+            onClick={handleCheckIn}
+            className="w-full min-h-[46px] rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs flex items-center justify-center gap-2"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>Konfirmasi Santri Telah Kembali ke Asrama</span>
+          </Button>
         </div>
       )}
 
@@ -519,6 +561,13 @@ export default function PermissionDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Preview Modal Surat Izin */}
+      <SuratIzinPreviewModal
+        isOpen={isPreviewSuratOpen}
+        onClose={() => setIsPreviewSuratOpen(false)}
+        permission={permission}
+      />
     </div>
   );
 }

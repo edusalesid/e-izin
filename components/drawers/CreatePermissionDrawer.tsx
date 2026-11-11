@@ -38,6 +38,7 @@ interface CreatePermissionDrawerProps {
   activeRole: UserRole;
   currentUser: UserAccount | null;
   onSuccess: () => void;
+  onPermissionCreated?: (permission: Permission, isAutoApproved: boolean) => void;
 }
 
 const PRESET_REASONS = [
@@ -58,6 +59,7 @@ export function CreatePermissionDrawer({
   activeRole,
   currentUser,
   onSuccess,
+  onPermissionCreated,
 }: CreatePermissionDrawerProps) {
   // Santri yang pulang / sudah di approve (APPROVED_WALI_KELAS atau SEDANG_DI_LUAR) tidak muncul di daftar pengajuan
   const availableStudents = useMemo(() => {
@@ -356,12 +358,20 @@ export function CreatePermissionDrawer({
         });
       } catch {}
 
-      toast.success('Permohonan Izin Berhasil Diajukan', {
-        description: `Izin ananda ${selectedStudent.fullName} berhasil dikirim ke antrean persetujuan.`,
+      const isApproved = data.isAutoApproved || data?.permission?.status === 'SEDANG_DI_LUAR' || data?.permission?.status === 'APPROVED_WALI_KELAS';
+      
+      toast.success(isApproved ? 'Izin Disetujui & Siap Keluar' : 'Permohonan Izin Berhasil Diajukan', {
+        description: isApproved
+          ? `Izin santri ${selectedStudent.fullName} disetujui otomatis. Surat izin siap diekspor ke PDF.`
+          : `Izin ananda ${selectedStudent.fullName} berhasil dikirim ke antrean persetujuan.`,
       });
 
       onSuccess();
       onClose();
+
+      if (onPermissionCreated && data?.permission) {
+        onPermissionCreated(data.permission, isApproved);
+      }
     } catch (err: any) {
       const msg = err.message || 'Terjadi kendala saat mengirim permohonan.';
       setErrorMessage(msg);

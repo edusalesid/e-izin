@@ -31,7 +31,8 @@ export type TabKey =
   | 'MASTER'
   | 'RIWAYAT'
   | 'PROFIL'
-  | 'PESIAR';
+  | 'PESIAR'
+  | 'USER_MGMT';
 
 interface BottomNavProps {
   activeRole: UserRole;
@@ -77,6 +78,15 @@ export function BottomNav({
         ];
 
       case 'SUPER_ADMIN':
+        return [
+          { key: 'APPROVAL', label: 'Persetujuan', icon: CheckSquare, badge: pendingCount },
+          { key: 'MONITOR', label: 'Monitoring', icon: Activity, badge: outsideCount },
+          { key: 'USER_MGMT', label: 'Kelola User', icon: Users },
+          { key: 'MASTER', label: 'Data Santri', icon: Database },
+          { key: 'RIWAYAT', label: 'Semua Izin', icon: History },
+          { key: 'PROFIL', label: 'Profil', icon: User },
+        ];
+
       case 'KEPALA_ASRAMA':
         return [
           { key: 'APPROVAL', label: 'Persetujuan', icon: CheckSquare, badge: pendingCount },

@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { DEFAULT_FINE_SETTINGS } from '@/lib/utils';
 
+const DEFAULT_ACCESS_CONTROL_SETTINGS = {
+  superAdminOnlyApproval: false,
+  allowWaliKelasApprove: true,
+  allowWaliKelasCreate: true,
+  allowUstadzCreate: true,
+  allowOrangTuaCreate: true,
+};
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -12,9 +20,16 @@ export async function GET(request: NextRequest) {
     });
 
     if (!setting) {
+      let defaultValue: any = null;
+      if (key === 'late_fine_settings') {
+        defaultValue = DEFAULT_FINE_SETTINGS;
+      } else if (key === 'access_control_settings') {
+        defaultValue = DEFAULT_ACCESS_CONTROL_SETTINGS;
+      }
+
       return NextResponse.json({
         key,
-        value: key === 'late_fine_settings' ? DEFAULT_FINE_SETTINGS : null,
+        value: defaultValue,
       });
     }
 

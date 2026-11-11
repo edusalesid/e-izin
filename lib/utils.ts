@@ -54,6 +54,34 @@ export function formatTimeOnly(isoString?: string): string {
   }
 }
 
+export function toInputDateTime(isoString?: string): string {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const y = d.getFullYear();
+    const m = pad(d.getMonth() + 1);
+    const day = pad(d.getDate());
+    const hours = pad(d.getHours());
+    const mins = pad(d.getMinutes());
+    return `${y}-${m}-${day}T${hours}:${mins}`;
+  } catch {
+    return '';
+  }
+}
+
+export function fromInputDateTime(value?: string): string {
+  if (!value) return '';
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+    return d.toISOString();
+  } catch {
+    return '';
+  }
+}
+
 export function calculateLateMinutes(plannedReturnIso: string, actualReturnIso: string): number {
   try {
     const planned = new Date(plannedReturnIso).getTime();

@@ -13,6 +13,8 @@ import { SatpamView } from '@/components/views/SatpamView';
 import { KepalaAsramaView } from '@/components/views/KepalaAsramaView';
 import { UstadzView } from '@/components/views/UstadzView';
 import { ProfileView } from '@/components/views/ProfileView';
+import { UserManagementView } from '@/components/views/UserManagementView';
+import { SuratIzinPreviewModal } from '@/components/modals/SuratIzinPreviewModal';
 import { CreatePermissionDrawer } from '@/components/drawers/CreatePermissionDrawer';
 import { ReturnStudentDrawer } from '@/components/drawers/ReturnStudentDrawer';
 import { RefreshCw } from 'lucide-react';
@@ -37,6 +39,7 @@ export default function UnifiedMainPortalPage() {
   const [isAjukanDrawerOpen, setIsAjukanDrawerOpen] = useState(false);
   const [isReturnDrawerOpen, setIsReturnDrawerOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [previewSuratPermission, setPreviewSuratPermission] = useState<Permission | null>(null);
 
   // Session & Auth state
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -363,23 +366,80 @@ export default function UnifiedMainPortalPage() {
         throw new Error(errorData.error || 'Gagal menyetujui izin santri');
       }
 
-      markLocalPermissionAction(id, 'APPROVED_WALI_KELAS');
+      const resData = await res.json().catch(() => ({}));
+      const updatedPerm = resData?.permission || perm;
+
+      markLocalPermissionAction(id, 'SEDANG_DI_LUAR');
 
       toast.success('Izin Berhasil Disetujui', {
         description: perm
-          ? `Izin untuk ${perm.studentName} telah disetujui oleh ${actorTitle}. Siap keluar gerbang.`
-          : `Permohonan izin telah disetujui oleh ${actorTitle}. Santri siap keluar melalui gerbang.`,
+          ? `Izin ${perm.studentName} disetujui oleh ${actorTitle}. Santri otomatis tercatat sudah keluar asrama.`
+          : `Permohonan izin telah disetujui oleh ${actorTitle}. Santri otomatis tercatat sudah keluar asrama.`,
       });
 
       sendPwaNotification('Izin Santri Disetujui', {
-        body: `Permohonan izin telah disetujui oleh ${actorTitle} dan siap untuk check-out gerbang.`,
-        tag: `perm-status-${id}-APPROVED_WALI_KELAS`,
+        body: `Permohonan izin telah disetujui oleh ${actorTitle}. Santri otomatis tercatat sudah keluar asrama.`,
+        tag: `perm-status-${id}-SEDANG_DI_LUAR`,
       });
+
+      // Tampilkan Modal Pratinjau & Export PDF Surat Izin (Requirement 4)
+      if (updatedPerm) {
+        setPreviewSuratPermission(updatedPerm);
+      }
+
       fetchData(true);
     } catch (err: any) {
       console.error('Approve failed:', err);
       toast.error('Gagal Menyetujui Izin', {
         description: err?.message || 'Terjadi kesalahan sistem saat menyetujui permohonan.',
+      });
+    }
+  };
+
+  // Pembatalan Izin oleh Musrif / Guru manapun yang dijumpai santri (Requirement 2)
+  const handleCancelPermission = async (id: string, reason: string) => {
+    try {
+      const perm = permissions.find((p) => p.id === id);
+      const actorName = session?.user?.name || 'Petugas Asrama';
+      const actorRole = session?.role || 'USTADZ_UMUM';
+
+      const res = await fetch('/api/permissions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          status: 'CANCELLED',
+          actorName,
+          actorRole,
+          actorId: session?.user?.id,
+          cancelReason: reason || 'Santri membatalkan izin keluar asrama.',
+          note: `Izin dibatalkan oleh ${actorName} (${actorRole}): ${reason}`,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Gagal membatalkan perizinan santri');
+      }
+
+      markLocalPermissionAction(id, 'CANCELLED');
+
+      toast.success('Izin Berhasil Dibatalkan', {
+        description: perm
+          ? `Izin ananda ${perm.studentName} berhasil dibatalkan. Laporan otomatis dikirimkan ke Super Admin.`
+          : 'Izin berhasil dibatalkan. Laporan otomatis dikirimkan ke Super Admin.',
+      });
+
+      sendPwaNotification('Izin Santri Dibatalkan', {
+        body: `Izin untuk ${perm?.studentName || 'santri'} telah dibatalkan oleh ${actorName}. Laporan detail tersimpan untuk Super Admin.`,
+        tag: `perm-status-${id}-CANCELLED`,
+      });
+
+      fetchData(true);
+    } catch (err: any) {
+      console.error('Cancel failed:', err);
+      toast.error('Gagal Membatalkan Izin', {
+        description: err?.message || 'Terjadi kesalahan sistem saat membatalkan perizinan.',
       });
     }
   };
@@ -638,6 +698,8 @@ export default function UnifiedMainPortalPage() {
                 onApprove={handleApprove}
                 onReject={handleReject}
                 onCheckIn={handleCheckIn}
+                onCancel={handleCancelPermission}
+                onPreviewSurat={(perm) => setPreviewSuratPermission(perm)}
                 onOpenReturnDrawer={() => setIsReturnDrawerOpen(true)}
                 onRefresh={fetchData}
                 onTabChange={setActiveTab}
@@ -656,8 +718,19 @@ export default function UnifiedMainPortalPage() {
               />
             )}
 
-            {/* 4. Kepala Asrama & Super Admin Portal View */}
-            {(session.role === 'KEPALA_ASRAMA' || session.role === 'SUPER_ADMIN') && session.user && (
+            {/* 4. Super Admin Management User Tab (Requirement 5 & 3) */}
+            {session.role === 'SUPER_ADMIN' && activeTab === 'USER_MGMT' && session.user && (
+              <UserManagementView
+                currentUser={session.user}
+                users={users}
+                classrooms={classrooms}
+                permissions={permissions}
+                onRefresh={fetchData}
+              />
+            )}
+
+            {/* 5. Kepala Asrama & Super Admin General Portal View */}
+            {(session.role === 'KEPALA_ASRAMA' || (session.role === 'SUPER_ADMIN' && activeTab !== 'USER_MGMT')) && session.user && (
               <KepalaAsramaView
                 activeTab={activeTab}
                 currentUser={session.user}
@@ -666,6 +739,8 @@ export default function UnifiedMainPortalPage() {
                 onApprove={handleApprove}
                 onReject={handleReject}
                 onCheckIn={handleCheckIn}
+                onCancel={handleCancelPermission}
+                onPreviewSurat={(perm) => setPreviewSuratPermission(perm)}
                 onRefresh={fetchData}
                 onStudentsUpdated={fetchData}
                 onTabChange={setActiveTab}
@@ -674,7 +749,7 @@ export default function UnifiedMainPortalPage() {
               />
             )}
 
-            {/* 5. Ustadz / Guru Umum Portal View */}
+            {/* 6. Ustadz / Guru Umum Portal View */}
             {session.role === 'USTADZ_UMUM' && session.user && (
               <UstadzView
                 activeTab={activeTab}
@@ -682,6 +757,8 @@ export default function UnifiedMainPortalPage() {
                 students={students}
                 permissions={permissions}
                 onCheckIn={handleCheckIn}
+                onCancel={handleCancelPermission}
+                onPreviewSurat={(perm) => setPreviewSuratPermission(perm)}
                 onOpenReturnDrawer={() => setIsReturnDrawerOpen(true)}
                 onRefresh={fetchData}
                 onTabChange={setActiveTab}
@@ -722,6 +799,11 @@ export default function UnifiedMainPortalPage() {
           onSuccess={() => {
             fetchData();
           }}
+          onPermissionCreated={(createdPerm, isAutoApproved) => {
+            if (isAutoApproved) {
+              setPreviewSuratPermission(createdPerm);
+            }
+          }}
         />
       )}
 
@@ -738,6 +820,13 @@ export default function UnifiedMainPortalPage() {
           }}
         />
       )}
+
+      {/* Modal Pratinjau & Export PDF Surat Izin (Requirement 4) */}
+      <SuratIzinPreviewModal
+        isOpen={!!previewSuratPermission}
+        onClose={() => setPreviewSuratPermission(null)}
+        permission={previewSuratPermission}
+      />
     </div>
   );
 }

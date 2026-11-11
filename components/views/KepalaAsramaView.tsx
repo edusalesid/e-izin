@@ -45,6 +45,8 @@ interface KepalaAsramaViewProps {
   onApprove?: (id: string) => void;
   onReject?: (id: string, reason: string) => void;
   onCheckIn?: (id: string, lateFineStatus?: 'UNPAID' | 'PAID') => void;
+  onCancel?: (id: string, reason: string) => void;
+  onPreviewSurat?: (permission: Permission) => void;
   onRefresh: () => void;
   onStudentsUpdated: () => void;
   onTabChange?: (tab: TabKey) => void;
@@ -125,6 +127,8 @@ export function KepalaAsramaView({
   onApprove,
   onReject,
   onCheckIn,
+  onCancel,
+  onPreviewSurat,
   onRefresh,
   onStudentsUpdated,
   onTabChange,
@@ -853,7 +857,14 @@ export function KepalaAsramaView({
           ) : (
             <div className="space-y-2.5">
               {filteredCurrentlyOutside.map((perm) => (
-                <PermissionCard key={perm.id} permission={perm} activeRole="KEPALA_ASRAMA" onCheckIn={onCheckIn} />
+                <PermissionCard
+                  key={perm.id}
+                  permission={perm}
+                  activeRole={currentUser.role}
+                  onCheckIn={onCheckIn}
+                  onCancel={onCancel}
+                  onPreviewSurat={onPreviewSurat}
+                />
               ))}
             </div>
           )}
@@ -1108,7 +1119,14 @@ export function KepalaAsramaView({
           ) : (
             <div className="space-y-2.5">
               {filteredLatePermissions.map((perm) => (
-                <PermissionCard key={perm.id} permission={perm} activeRole="KEPALA_ASRAMA" onCheckIn={onCheckIn} />
+                <PermissionCard
+                  key={perm.id}
+                  permission={perm}
+                  activeRole={currentUser.role}
+                  onCheckIn={onCheckIn}
+                  onCancel={onCancel}
+                  onPreviewSurat={onPreviewSurat}
+                />
               ))}
             </div>
           )}
@@ -1133,7 +1151,9 @@ export function KepalaAsramaView({
           permissions={permissions.filter((p) => p.status !== 'PENDING_WALI_KELAS')}
           title="Arsip Perizinan Seluruh Santri"
           description="Rekapitulasi izin keluar dan kepulangan seluruh santri asrama yang telah diproses."
-          activeRole="KEPALA_ASRAMA"
+          activeRole={currentUser.role}
+          actorName={currentUser.name}
+          canEditDelete={true}
           emptyTitle="Belum Ada Arsip Perizinan Santri"
           emptySubtitle="Seluruh perizinan santri yang telah selesai diverifikasi atau diputuskan akan tercatat di sini."
           onRefresh={onRefresh}

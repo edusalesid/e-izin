@@ -43,6 +43,8 @@ interface WaliKelasViewProps {
   onApprove: (id: string) => void;
   onReject: (id: string, reason: string) => void;
   onCheckIn?: (id: string, lateFineStatus?: 'UNPAID' | 'PAID') => void;
+  onCancel?: (id: string, reason: string) => void;
+  onPreviewSurat?: (permission: Permission) => void;
   onOpenReturnDrawer?: () => void;
   onRefresh: () => void;
   onTabChange?: (tab: TabKey) => void;
@@ -135,6 +137,8 @@ export function WaliKelasView({
   onApprove,
   onReject,
   onCheckIn,
+  onCancel,
+  onPreviewSurat,
   onOpenReturnDrawer,
   onRefresh,
   onTabChange,
@@ -978,18 +982,61 @@ export function WaliKelasView({
                               Rencana kembali: {new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(new Date(activePerm.plannedReturn)).replace(/\./g, ':')} WIB
                             </span>
                           )}
+                          <div className="flex items-center gap-1.5 mt-1.5 justify-end">
+                            {onPreviewSurat && (
+                              <button
+                                type="button"
+                                onClick={() => onPreviewSurat(activePerm)}
+                                className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer"
+                              >
+                                Cetak PDF
+                              </button>
+                            )}
+                            {onCancel && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const reason = prompt(`Masukkan alasan pembatalan izin untuk ${student.fullName}:`, 'Santri batal izin');
+                                  if (reason) onCancel(activePerm.id, reason);
+                                }}
+                                className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-colors cursor-pointer"
+                              >
+                                Batal Izin
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ) : isApprovedReady ? (
                         <div className="text-right">
                           <Badge
                             variant="approved"
-                            className="bg-sky-600 text-white font-bold text-xs px-2.5 py-0.5 rounded-full"
+                            className="bg-emerald-700 text-white font-bold text-xs px-2.5 py-0.5 rounded-full"
                           >
-                            Izin Siap Keluar
+                            Di Luar Asrama
                           </Badge>
-                          <span className="block text-[10px] text-zinc-500 font-medium mt-1">
-                            Menunggu gerbang satpam
-                          </span>
+                          <div className="flex items-center gap-1.5 mt-1.5 justify-end">
+                            {onPreviewSurat && activePerm && (
+                              <button
+                                type="button"
+                                onClick={() => onPreviewSurat(activePerm)}
+                                className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer"
+                              >
+                                Cetak PDF
+                              </button>
+                            )}
+                            {onCancel && activePerm && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const reason = prompt(`Masukkan alasan pembatalan izin untuk ${student.fullName}:`, 'Santri batal izin');
+                                  if (reason) onCancel(activePerm.id, reason);
+                                }}
+                                className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-colors cursor-pointer"
+                              >
+                                Batal Izin
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <div className="text-right">

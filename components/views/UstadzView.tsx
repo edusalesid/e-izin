@@ -20,6 +20,8 @@ interface UstadzViewProps {
   students: Student[];
   permissions: Permission[];
   onCheckIn?: (id: string, lateFineStatus?: 'UNPAID' | 'PAID') => void;
+  onCancel?: (id: string, reason: string) => void;
+  onPreviewSurat?: (permission: Permission) => void;
   onOpenReturnDrawer?: () => void;
   onRefresh: () => void;
   onTabChange: (tab: TabKey) => void;
@@ -31,6 +33,8 @@ export function UstadzView({
   students,
   permissions,
   onCheckIn,
+  onCancel,
+  onPreviewSurat,
   onOpenReturnDrawer,
   onRefresh,
   onTabChange,
@@ -192,7 +196,14 @@ export function UstadzView({
             </Card>
           ) : (
             filteredSubmissions.map((perm) => (
-              <PermissionCard key={perm.id} permission={perm} activeRole="USTADZ_UMUM" />
+              <PermissionCard
+                key={perm.id}
+                permission={perm}
+                activeRole="USTADZ_UMUM"
+                onCheckIn={onCheckIn}
+                onCancel={onCancel}
+                onPreviewSurat={onPreviewSurat}
+              />
             ))
           )}
         </div>

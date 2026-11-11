@@ -24,7 +24,8 @@ export type PermissionStatus =
   | 'REJECTED' 
   | 'SEDANG_DI_LUAR' 
   | 'KEMBALI_TEPAT_WAKTU' 
-  | 'KEMBALI_TERLAMBAT';
+  | 'KEMBALI_TERLAMBAT'
+  | 'CANCELLED';
 
 export interface LateFineSettings {
   mode: 'PER_JAM' | 'FLAT';
@@ -119,16 +120,25 @@ export interface Permission {
   
   createdAt: string;
   updatedAt: string;
+  logs?: PermissionLog[];
 }
 
 export interface PermissionLog {
   id: string;
   permissionId: string;
-  action: 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CHECK_OUT' | 'CHECK_IN';
+  action: 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CHECK_OUT' | 'CHECK_IN' | 'CANCELLED';
   actorName: string;
   actorRole: UserRole;
   note?: string;
   timestamp: string;
+}
+
+export interface AccessControlSettings {
+  superAdminOnlyApproval: boolean;
+  allowWaliKelasApprove: boolean;
+  allowWaliKelasCreate: boolean;
+  allowUstadzCreate: boolean;
+  allowOrangTuaCreate: boolean;
 }
 
 export interface PesiarSchedule {

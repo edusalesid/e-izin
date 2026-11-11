@@ -57,12 +57,21 @@ export async function GET(request: NextRequest) {
     const list = await prisma.permission.findMany({
       where,
       orderBy: { createdAt: 'desc' },
+      include: {
+        logs: {
+          orderBy: { timestamp: 'desc' },
+        },
+      },
     });
 
     const permissions = list.map((p) => ({
       ...p,
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),
+      logs: p.logs.map((l) => ({
+        ...l,
+        timestamp: l.timestamp.toISOString(),
+      })),
     }));
 
     return NextResponse.json({ permissions });
@@ -77,6 +86,45 @@ export async function POST(request: NextRequest) {
 
     if (!body.studentId || !body.category || !body.reason || !body.plannedDeparture || !body.plannedReturn) {
       return NextResponse.json({ error: 'Data formulir tidak lengkap.' }, { status: 400 });
+    }
+
+    // Ambil konfigurasi hak akses & wewenang dari Super Admin
+    let accessSettings = {
+      superAdminOnlyApproval: false,
+      allowWaliKelasApprove: true,
+      allowWaliKelasCreate: true,
+      allowUstadzCreate: true,
+      allowOrangTuaCreate: true,
+    };
+    try {
+      const row = await prisma.systemSetting.findUnique({
+        where: { key: 'access_control_settings' },
+      });
+      if (row) {
+        accessSettings = { ...accessSettings, ...JSON.parse(row.value) };
+      }
+    } catch (e) {
+      console.warn('Gagal membaca access_control_settings:', e);
+    }
+
+    // Validasi wewenang pembuatan izin
+    if (body.applicantType === 'ORANG_TUA' && !accessSettings.allowOrangTuaCreate) {
+      return NextResponse.json(
+        { error: 'Pengajuan izin oleh Orang Tua sedang dinonaktifkan oleh Super Admin.' },
+        { status: 403 }
+      );
+    }
+    if (body.applicantRole === 'USTADZ_UMUM' && !accessSettings.allowUstadzCreate) {
+      return NextResponse.json(
+        { error: 'Pembuatan izin oleh Musrif / Ustadz sedang dinonaktifkan oleh Super Admin.' },
+        { status: 403 }
+      );
+    }
+    if (body.applicantRole === 'WALI_KELAS' && !accessSettings.allowWaliKelasCreate) {
+      return NextResponse.json(
+        { error: 'Pembuatan izin oleh Wali Kelas sedang dinonaktifkan oleh Super Admin.' },
+        { status: 403 }
+      );
     }
 
     // Ambil data santri beserta kelas & wali kelasnya
@@ -100,10 +148,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Data santri tidak ditemukan.' }, { status: 400 });
     }
 
-    // Aturan Perizinan:
-    // 1. Perizinan hanya bisa dilakukan 1 santri.
-    // 2. Jika santri sedang dalam tinjauan (PENDING_WALI_KELAS), tidak bisa menambahkan lagi dan harus menunggu di-approve.
-    // 3. Jika santri sudah di-approve (APPROVED_WALI_KELAS) atau sedang di luar/pulang (SEDANG_DI_LUAR), tidak dapat mengajukan izin baru.
+    // Cek apakah santri masih memiliki izin aktif yang sedang berlangsung
     const activePermission = await prisma.permission.findFirst({
       where: {
         OR: [
@@ -121,74 +166,71 @@ export async function POST(request: NextRequest) {
       if (activePermission.status === 'PENDING_WALI_KELAS') {
         return NextResponse.json(
           {
-            error: `Santri ${studentName} masih memiliki permohonan izin yang sedang dalam tinjauan. Tidak bisa menambahkan izin lagi, harus menunggu persetujuan (approve).`,
+            error: `Santri ${studentName} masih memiliki permohonan izin yang sedang dalam tinjauan. Mohon tunggu persetujuan.`,
           },
           { status: 400 }
         );
       }
 
-      if (activePermission.status === 'APPROVED_WALI_KELAS') {
+      if (activePermission.status === 'APPROVED_WALI_KELAS' || activePermission.status === 'SEDANG_DI_LUAR') {
         return NextResponse.json(
           {
-            error: `Santri ${studentName} sudah memiliki perizinan yang telah disetujui (siap keluar gerbang). Tidak bisa mengajukan izin baru.`,
-          },
-          { status: 400 }
-        );
-      }
-
-      if (activePermission.status === 'SEDANG_DI_LUAR') {
-        return NextResponse.json(
-          {
-            error: `Santri ${studentName} saat ini tercatat sedang berada di luar pondok / pulang. Pengajuan izin baru hanya dapat dilakukan setelah santri kembali.`,
+            error: `Santri ${studentName} saat ini tercatat sedang memiliki izin aktif (sudah keluar asrama). Pengajuan baru dapat dilakukan setelah santri kembali atau jika izin sebelumnya dibatalkan.`,
           },
           { status: 400 }
         );
       }
     }
 
-    // Aturan Auto-Approval:
-    // 1. Jika pembuat izin adalah Kepala Asrama -> langsung AUTO-APPROVED
-    // 2. Jika pembuat izin adalah Wali Kelas dari kelas santri ini -> langsung AUTO-APPROVED
-    // 3. Jika pembuat izin adalah orang tua / ustadz lain di luar kelas santri -> PENDING (butuh persetujuan Wali Kelas atau Kepala Asrama)
+    // Aturan Auto-Approval & Wewenang:
+    // 1. Jika mode "Super Admin Only" aktif -> Semua izin harus disetujui Super Admin (kecuali Super Admin sendiri yang membuat)
+    // 2. Jika Super Admin / Kepala Asrama membuat -> langsung disetujui
+    // 3. Jika Wali Kelas membuat dan wewenang Walas aktif -> langsung disetujui
     let isAutoApprove = false;
     let autoApproveNote = '';
 
     const classroomWaliId = student?.classroom?.waliKelasId;
     const classroomWaliName = student?.classroom?.waliKelasName || '';
 
-    if (body.applicantRole === 'KEPALA_ASRAMA' || body.applicantRole === 'SUPER_ADMIN') {
+    if (body.applicantRole === 'SUPER_ADMIN') {
       isAutoApprove = true;
-      autoApproveNote = 'Disetujui otomatis oleh Super Admin / Kepala Asrama saat pembuatan izin';
-    } else if (
-      body.applicantType === 'USTADZ' &&
-      body.applicantRole === 'WALI_KELAS' &&
-      ((classroomWaliId && body.applicantId && classroomWaliId === body.applicantId) ||
-       (classroomWaliName && body.applicantName && (
-         classroomWaliName.toLowerCase().includes(body.applicantName.toLowerCase()) ||
-         body.applicantName.toLowerCase().includes(classroomWaliName.toLowerCase())
-       )))
-    ) {
-      isAutoApprove = true;
-      autoApproveNote = `Disetujui otomatis oleh Wali Kelas (${classroomWaliName}) untuk santri kelasnya sendiri (info diteruskan ke Kepala Asrama)`;
+      autoApproveNote = 'Disetujui otomatis oleh Super Admin saat pembuatan izin (Otomatis keluar asrama)';
+    } else if (!accessSettings.superAdminOnlyApproval) {
+      if (body.applicantRole === 'KEPALA_ASRAMA') {
+        isAutoApprove = true;
+        autoApproveNote = 'Disetujui otomatis oleh Kepala Asrama saat pembuatan izin (Otomatis keluar asrama)';
+      } else if (
+        accessSettings.allowWaliKelasApprove &&
+        body.applicantType === 'USTADZ' &&
+        body.applicantRole === 'WALI_KELAS' &&
+        ((classroomWaliId && body.applicantId && classroomWaliId === body.applicantId) ||
+         (classroomWaliName && body.applicantName && (
+           classroomWaliName.toLowerCase().includes(body.applicantName.toLowerCase()) ||
+           body.applicantName.toLowerCase().includes(classroomWaliName.toLowerCase())
+         )))
+      ) {
+        isAutoApprove = true;
+        autoApproveNote = `Disetujui otomatis oleh Wali Kelas (${classroomWaliName}) untuk santri kelasnya (Otomatis keluar asrama)`;
+      }
     }
 
-    const initialStatus = isAutoApprove ? 'APPROVED_WALI_KELAS' : 'PENDING_WALI_KELAS';
+    // Aturan Requirement 1: Jika sudah diizinkan, otomatis dianggap sudah keluar asrama (SEDANG_DI_LUAR)
+    const initialStatus = isAutoApprove ? 'SEDANG_DI_LUAR' : 'PENDING_WALI_KELAS';
     const approvedById = isAutoApprove ? (body.applicantId || null) : null;
     const approvedByName = isAutoApprove ? (body.applicantName || classroomWaliName) : null;
     const approvedAt = isAutoApprove ? new Date().toISOString() : null;
+    const actualDeparture = isAutoApprove ? new Date().toISOString() : null;
 
-    // Prioritaskan targetApproverId yang dipilih secara eksplisit oleh pemohon (misal memilih Anton)
-    // Jika tidak ada target spesifik, gunakan wali kelas santri tersebut
     const targetApproverId = isAutoApprove ? null : (body.targetApproverId || classroomWaliId || null);
     const targetApproverName = isAutoApprove
       ? null
-      : (body.targetApproverName || (classroomWaliName ? `${classroomWaliName} & Kepala Asrama` : 'Wali Kelas & Kepala Asrama'));
+      : (body.targetApproverName || (accessSettings.superAdminOnlyApproval ? 'Super Admin' : (classroomWaliName ? `${classroomWaliName} & Super Admin` : 'Super Admin')));
 
     const submitNote = isAutoApprove
       ? autoApproveNote
       : targetApproverName
-      ? `Pengajuan izin baru diajukan oleh ${body.applicantName || 'Ustadz'}. Menunggu persetujuan ${targetApproverName}.`
-      : 'Pengajuan izin baru. Menunggu persetujuan Wali Kelas atau Kepala Asrama.';
+      ? `Pengajuan izin baru diajukan oleh ${body.applicantName || 'Pemohon'}. Menunggu persetujuan ${targetApproverName}.`
+      : 'Pengajuan izin baru. Menunggu persetujuan Super Admin / Wali Kelas.';
 
     const created = await prisma.permission.create({
       data: {
@@ -210,6 +252,7 @@ export async function POST(request: NextRequest) {
         attachmentUrl: body.attachmentUrl || null,
         plannedDeparture: body.plannedDeparture,
         plannedReturn: body.plannedReturn,
+        actualDeparture,
         status: initialStatus,
         approvedById,
         approvedByName,
@@ -223,9 +266,12 @@ export async function POST(request: NextRequest) {
           },
         },
       },
+      include: {
+        logs: true,
+      },
     });
 
-    // Kirim Web Push Notification antar-perangkat secara otomatis (wajib di-await agar tidak diputus Vercel Serverless)
+    // Kirim Web Push Notification antar-perangkat
     try {
       const creatorExclude = body.applicantId ? [body.applicantId] : [];
       const newPermTag = `perm-new-${created.id}`;
@@ -234,8 +280,8 @@ export async function POST(request: NextRequest) {
         await Promise.allSettled([
           sendTargetedPush(
             {
-              title: 'Izin Santri Disetujui Otomatis 🔔',
-              body: `Izin untuk ${studentName} (${className}) telah disetujui oleh ${body.applicantName || 'Pihak Sekolah'}.`,
+              title: 'Izin Santri Disetujui (Sudah Keluar Asrama) 🚪',
+              body: `Izin untuk ${studentName} (${className}) telah disetujui oleh ${body.applicantName || 'Pihak Sekolah'}. Santri tercatat sudah keluar asrama.`,
               url: '/',
               tag: newPermTag,
             },
@@ -246,19 +292,7 @@ export async function POST(request: NextRequest) {
           ),
           sendTargetedPush(
             {
-              title: 'Izin Baru Siap Keluar 🚪',
-              body: `Santri ${studentName} (${className}) telah disetujui izin keluar pos gerbang.`,
-              url: '/',
-              tag: newPermTag,
-            },
-            {
-              roles: ['SATPAM'],
-              excludeUserIds: creatorExclude,
-            }
-          ),
-          sendTargetedPush(
-            {
-              title: 'Pengajuan Izin Santri Baru 📝',
+              title: 'Izin Baru Disetujui 📝',
               body: `${studentName} (${className}) izin: ${body.reason} (Oleh: ${body.applicantName || 'Wali Kelas'})`,
               url: '/',
               tag: newPermTag,
@@ -270,14 +304,16 @@ export async function POST(request: NextRequest) {
           ),
         ]);
       } else {
-        const targetRoles = ['KEPALA_ASRAMA', 'SUPER_ADMIN'];
-        // Kumpulkan semua ID approver: approver yang dipilih pemohon (misal Anton) dan/atau wali kelas
+        const targetRoles = ['SUPER_ADMIN'];
+        if (!accessSettings.superAdminOnlyApproval) {
+          targetRoles.push('KEPALA_ASRAMA');
+          if (accessSettings.allowWaliKelasApprove) {
+            targetRoles.push('WALI_KELAS');
+          }
+        }
+
         const candidateApproverIds = [body.targetApproverId, targetApproverId, classroomWaliId].filter(Boolean) as string[];
         const uniqueApproverIds = Array.from(new Set(candidateApproverIds));
-
-        if (uniqueApproverIds.length === 0) {
-          targetRoles.push('WALI_KELAS');
-        }
 
         await sendTargetedPush(
           {
@@ -314,7 +350,79 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, status, actorName, actorRole, actorId, rejectionReason, actualDeparture, actualReturn, note } = body;
+    const { id, status, actorName, actorRole, actorId, rejectionReason, cancelReason, actualDeparture, actualReturn, note } = body;
+
+    // ==========================================
+    // 0. EDIT DETAILS (UBAH DATA PERIZINAN OLEH ADMIN / KEPALA ASRAMA)
+    // ==========================================
+    if (body.action === 'EDIT_DETAILS' || body.isEdit) {
+      if (!id) {
+        return NextResponse.json({ error: 'ID izin wajib disertakan.' }, { status: 400 });
+      }
+
+      const existing = await prisma.permission.findUnique({
+        where: { id },
+      });
+
+      if (!existing) {
+        return NextResponse.json({ error: 'Izin tidak ditemukan.' }, { status: 404 });
+      }
+
+      const editData: any = {};
+      if (body.category !== undefined) editData.category = body.category;
+      if (body.reason !== undefined) editData.reason = body.reason;
+      if (body.status !== undefined) editData.status = body.status;
+      if (body.plannedDeparture !== undefined) editData.plannedDeparture = body.plannedDeparture;
+      if (body.plannedReturn !== undefined) editData.plannedReturn = body.plannedReturn;
+      if (body.actualDeparture !== undefined) editData.actualDeparture = body.actualDeparture || null;
+      if (body.actualReturn !== undefined) editData.actualReturn = body.actualReturn || null;
+      if (body.escortType !== undefined) editData.escortType = body.escortType;
+      if (body.escortNote !== undefined) editData.escortNote = body.escortNote;
+      if (body.applicantName !== undefined) editData.applicantName = body.applicantName;
+      if (body.applicantPhone !== undefined) editData.applicantPhone = body.applicantPhone;
+      if (body.rejectionReason !== undefined) editData.rejectionReason = body.rejectionReason || null;
+      if (body.lateDurationMinutes !== undefined) editData.lateDurationMinutes = Number(body.lateDurationMinutes) || 0;
+      if (body.lateFineAmount !== undefined) editData.lateFineAmount = Number(body.lateFineAmount) || 0;
+      if (body.lateFineStatus !== undefined) editData.lateFineStatus = body.lateFineStatus || null;
+      if (body.approvedByName !== undefined) editData.approvedByName = body.approvedByName;
+      if (body.approvedAt !== undefined) editData.approvedAt = body.approvedAt;
+
+      const actName = body.actorName || 'Admin Asrama';
+      const actRole = body.actorRole || 'KEPALA_ASRAMA';
+
+      const updated = await prisma.permission.update({
+        where: { id },
+        data: {
+          ...editData,
+          logs: {
+            create: {
+              action: 'APPROVED',
+              actorName: actName,
+              actorRole: actRole,
+              note: body.note || `Data perizinan diperbarui oleh ${actName} (${actRole}).`,
+            },
+          },
+        },
+        include: {
+          logs: {
+            orderBy: { timestamp: 'desc' },
+          },
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        permission: {
+          ...updated,
+          createdAt: updated.createdAt.toISOString(),
+          updatedAt: updated.updatedAt.toISOString(),
+          logs: updated.logs.map((l) => ({
+            ...l,
+            timestamp: l.timestamp.toISOString(),
+          })),
+        },
+      });
+    }
 
     if (!id || !status || !actorName || !actorRole) {
       return NextResponse.json({ error: 'Parameter update status tidak lengkap.' }, { status: 400 });
@@ -328,32 +436,90 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Izin tidak ditemukan.' }, { status: 404 });
     }
 
-    const updateData: any = {
-      status,
+    // Ambil konfigurasi hak akses dari Super Admin
+    let accessSettings = {
+      superAdminOnlyApproval: false,
+      allowWaliKelasApprove: true,
+      allowWaliKelasCreate: true,
+      allowUstadzCreate: true,
+      allowOrangTuaCreate: true,
     };
+    try {
+      const row = await prisma.systemSetting.findUnique({
+        where: { key: 'access_control_settings' },
+      });
+      if (row) {
+        accessSettings = { ...accessSettings, ...JSON.parse(row.value) };
+      }
+    } catch {}
 
-    let logAction: 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CHECK_OUT' | 'CHECK_IN' = 'APPROVED';
+    const updateData: any = {};
+    let logAction: 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CHECK_OUT' | 'CHECK_IN' | 'CANCELLED' = 'APPROVED';
+    let logNote = note || '';
 
-    if (status === 'APPROVED_WALI_KELAS') {
+    // ==========================================
+    // 1. APPROVAL (DISETUJUI)
+    // Requirement 1: Jika disetujui, otomatis langsung dianggap sudah keluar asrama (SEDANG_DI_LUAR)
+    // Requirement 3: Super admin mengontrol hak menyetujui akun lain
+    // ==========================================
+    if (status === 'APPROVED_WALI_KELAS' || status === 'SEDANG_DI_LUAR' || body.action === 'APPROVE') {
+      if (accessSettings.superAdminOnlyApproval && actorRole !== 'SUPER_ADMIN') {
+        return NextResponse.json(
+          { error: 'Mode "Hanya Super Admin Menyetujui" sedang aktif. Hanya Super Admin yang berwenang menyetujui izin ini.' },
+          { status: 403 }
+        );
+      }
+
+      if (actorRole === 'WALI_KELAS' && !accessSettings.allowWaliKelasApprove) {
+        return NextResponse.json(
+          { error: 'Wewenang persetujuan izin oleh Wali Kelas sedang dinonaktifkan oleh Super Admin.' },
+          { status: 403 }
+        );
+      }
+
+      // Otomatis tercatat keluar asrama saat diizinkan
+      updateData.status = 'SEDANG_DI_LUAR';
+      updateData.actualDeparture = actualDeparture || new Date().toISOString();
       updateData.approvedById = actorId || null;
       updateData.approvedByName = actorName;
       updateData.approvedAt = new Date().toISOString();
       logAction = 'APPROVED';
-    } else if (status === 'REJECTED') {
-      updateData.rejectionReason = rejectionReason || null;
+      logNote = logNote || `Disetujui oleh ${actorName} (${actorRole}). Santri otomatis tercatat sudah keluar asrama.`;
+    }
+
+    // ==========================================
+    // 2. CANCEL / BATAL IZIN (REMOVE BUTTON)
+    // Requirement 2: Tombol Remove/Cancel bisa dilakukan oleh semua musrif/guru yang dijumpai anak
+    // Super admin menerima laporan detail
+    // ==========================================
+    else if (status === 'CANCELLED' || body.action === 'CANCEL') {
+      const reasonText = cancelReason || note || 'Santri membatalkan izin keluar / pulang asrama.';
+      updateData.status = 'CANCELLED';
+      updateData.rejectionReason = reasonText;
+      logAction = 'CANCELLED';
+      logNote = `Izin dibatalkan oleh ${actorName} (${actorRole}). Alasan: ${reasonText}`;
+    }
+
+    // ==========================================
+    // 3. REJECTED (DITOLAK)
+    // ==========================================
+    else if (status === 'REJECTED') {
+      updateData.status = 'REJECTED';
+      updateData.rejectionReason = rejectionReason || note || 'Izin ditolak.';
       logAction = 'REJECTED';
-    } else if (status === 'SEDANG_DI_LUAR') {
-      updateData.actualDeparture = actualDeparture || new Date().toISOString();
-      updateData.satpamDepartureId = actorId || null;
-      updateData.satpamDepartureName = actorName;
-      logAction = 'CHECK_OUT';
-    } else if (status === 'KEMBALI_TEPAT_WAKTU' || status === 'KEMBALI_TERLAMBAT') {
+      logNote = `Ditolak oleh ${actorName} (${actorRole}): ${updateData.rejectionReason}`;
+    }
+
+    // ==========================================
+    // 4. CHECK-IN (KEMBALI KE ASRAMA)
+    // Bisa dilakukan oleh Musrif / Guru / Satpam manapun yang menemui santri
+    // ==========================================
+    else if (status === 'KEMBALI_TEPAT_WAKTU' || status === 'KEMBALI_TERLAMBAT') {
       const returnTime = actualReturn || new Date().toISOString();
       updateData.actualReturn = returnTime;
       updateData.satpamReturnId = actorId || null;
       updateData.satpamReturnName = actorName;
 
-      // Ambil konfigurasi denda yang disetel oleh Kepala Asrama
       let fineSettings = DEFAULT_FINE_SETTINGS;
       try {
         const settingRow = await prisma.systemSetting.findUnique({
@@ -367,7 +533,6 @@ export async function PATCH(request: NextRequest) {
       const lateMins = calculateLateMinutes(existing.plannedReturn, returnTime);
       updateData.lateDurationMinutes = lateMins;
 
-      // Terlambat jika melampaui toleransi (grace period)
       const isLate = lateMins > (fineSettings.gracePeriodMinutes || 0);
       updateData.status = isLate ? 'KEMBALI_TERLAMBAT' : 'KEMBALI_TEPAT_WAKTU';
 
@@ -379,10 +544,12 @@ export async function PATCH(request: NextRequest) {
         updateData.lateFineStatus = null;
       }
       logAction = 'CHECK_IN';
+      logNote = logNote || (isLate ? `Kembali ke asrama (terlambat ${lateMins} menit).` : 'Kembali ke asrama tepat waktu.');
     } else if (status === 'PAY_FINE' || body.action === 'PAY_FINE') {
       updateData.lateFineStatus = 'PAID';
       updateData.status = existing.status;
       logAction = 'CHECK_IN';
+      logNote = `Pembayaran denda keterlambatan diselesaikan oleh ${actorName}.`;
     }
 
     if (body.lateFineStatus) {
@@ -398,26 +565,31 @@ export async function PATCH(request: NextRequest) {
             action: logAction,
             actorName,
             actorRole,
-            note: note || rejectionReason || `Status diperbarui menjadi ${status}`,
+            note: logNote,
           },
+        },
+      },
+      include: {
+        logs: {
+          orderBy: { timestamp: 'desc' },
         },
       },
     });
 
-    // Kirim Web Push Notification antar-perangkat sesuai aksi pembaruan status (wajib di-await di Serverless)
+    // Kirim Web Push Notification antar-perangkat
     try {
       const actorExclude = actorId ? [actorId] : [];
       const statusTag = `perm-status-${updated.id}-${updated.status}`;
 
-      if (status === 'APPROVED_WALI_KELAS') {
+      if (updated.status === 'SEDANG_DI_LUAR') {
         const applicantUserIds = [existing.applicantId, existing.targetApproverId].filter(Boolean) as string[];
 
         await Promise.allSettled([
-          // 1. Beritahu Pemohon (Ustadz pemohon maupun Wali Santri) & Kepala Asrama/Super Admin
+          // Beritahu Pemohon & Orang Tua
           sendTargetedPush(
             {
-              title: 'Izin Santri Disetujui ✅',
-              body: `Alhamdulillah, izin ${existing.studentName} (${existing.className}) telah disetujui oleh ${actorName}.`,
+              title: 'Izin Santri Disetujui (Keluar Asrama) ✅',
+              body: `Alhamdulillah, izin ${existing.studentName} (${existing.className}) telah disetujui oleh ${actorName}. Santri otomatis tercatat keluar asrama.`,
               url: '/',
               tag: statusTag,
             },
@@ -428,24 +600,38 @@ export async function PATCH(request: NextRequest) {
               excludeUserIds: actorExclude,
             }
           ),
-          // 2. Beritahu Satpam di pos gerbang
+        ]);
+      } else if (updated.status === 'CANCELLED') {
+        // Laporan Detail Pembatalan untuk Super Admin & Orang Tua (Requirement 2)
+        await Promise.allSettled([
           sendTargetedPush(
             {
-              title: 'Izin Santri Siap Keluar 🚪',
-              body: `Santri ${existing.studentName} (${existing.className}) diizinkan keluar pos gerbang.`,
+              title: 'Laporan: Izin Santri Dibatalkan 🚫',
+              body: `Izin untuk ${existing.studentName} (${existing.className}) dibatalkan oleh ${actorName} (${actorRole}). Alasan: ${cancelReason || note || 'Batal izin'}`,
               url: '/',
               tag: statusTag,
             },
             {
-              roles: ['SATPAM'],
+              roles: ['SUPER_ADMIN', 'KEPALA_ASRAMA'],
+              excludeUserIds: actorExclude,
+            }
+          ),
+          sendTargetedPush(
+            {
+              title: 'Pemberitahuan: Izin Dibatalkan ℹ️',
+              body: `Permohonan izin ananda ${existing.studentName} telah dibatalkan oleh pihak ustadz/sekolah (${actorName}).`,
+              url: '/',
+              tag: statusTag,
+            },
+            {
+              studentNisList: [existing.studentNis],
               excludeUserIds: actorExclude,
             }
           ),
         ]);
-      } else if (status === 'REJECTED') {
+      } else if (updated.status === 'REJECTED') {
         const applicantUserIds = [existing.applicantId, existing.targetApproverId].filter(Boolean) as string[];
 
-        // Beritahu Pemohon (Ustadz pemohon maupun Wali Santri) & Kepala Asrama/Super Admin
         await sendTargetedPush(
           {
             title: 'Pengajuan Izin Belum Disetujui ❌',
@@ -460,15 +646,17 @@ export async function PATCH(request: NextRequest) {
             excludeUserIds: actorExclude,
           }
         );
-      } else if (status === 'SEDANG_DI_LUAR') {
+      } else if (updated.status === 'KEMBALI_TEPAT_WAKTU' || updated.status === 'KEMBALI_TERLAMBAT') {
+        const isLate = updated.status === 'KEMBALI_TERLAMBAT';
         const applicantUserIds = existing.applicantId ? [existing.applicantId] : [];
 
         await Promise.allSettled([
-          // Beritahu Wali Santri & Pemohon
           sendTargetedPush(
             {
-              title: 'Santri Telah Keluar Gerbang 🚗',
-              body: `${existing.studentName} telah melewati pos gerbang (Satpam: ${actorName}).`,
+              title: isLate ? 'Santri Kembali ke Asrama (Terlambat) ⚠️' : 'Santri Telah Kembali ke Asrama 🏡',
+              body: isLate
+                ? `${existing.studentName} telah kembali ke asrama (terlambat ${updated.lateDurationMinutes || 0} menit, diverifikasi oleh ${actorName}).`
+                : `Alhamdulillah, ${existing.studentName} telah tiba kembali di asrama tepat waktu (diverifikasi oleh ${actorName}).`,
               url: '/',
               tag: statusTag,
             },
@@ -478,11 +666,12 @@ export async function PATCH(request: NextRequest) {
               excludeUserIds: actorExclude,
             }
           ),
-          // Beritahu Kepala Asrama & Super Admin
           sendTargetedPush(
             {
-              title: 'Aktivitas Gerbang: Santri Keluar 🚪',
-              body: `${existing.studentName} (${existing.className}) tercatat keluar gerbang oleh Satpam ${actorName}.`,
+              title: isLate ? 'Laporan Keterlambatan Santri ⚠️' : 'Santri Kembali ke Asrama 🏡',
+              body: isLate
+                ? `${existing.studentName} (${existing.className}) kembali terlambat ${updated.lateDurationMinutes || 0} menit (Verifikator: ${actorName}).`
+                : `${existing.studentName} (${existing.className}) telah kembali ke asrama (Verifikator: ${actorName}).`,
               url: '/',
               tag: statusTag,
             },
@@ -492,48 +681,6 @@ export async function PATCH(request: NextRequest) {
             }
           ),
         ]);
-      } else if (status === 'KEMBALI_TEPAT_WAKTU' || status === 'KEMBALI_TERLAMBAT') {
-        const isLate = updated.status === 'KEMBALI_TERLAMBAT';
-        const applicantUserIds = existing.applicantId ? [existing.applicantId] : [];
-
-        const pushTasks: Promise<any>[] = [
-          // Beritahu Wali Santri & Pemohon
-          sendTargetedPush(
-            {
-              title: isLate ? 'Santri Kembali (Terlambat) ⚠️' : 'Santri Telah Kembali ke Pondok 🏡',
-              body: isLate
-                ? `${existing.studentName} telah tiba di pos gerbang (terlambat ${updated.lateDurationMinutes || 0} menit).`
-                : `Alhamdulillah, ${existing.studentName} telah tiba kembali di pondok tepat waktu.`,
-              url: '/',
-              tag: statusTag,
-            },
-            {
-              userIds: applicantUserIds.length > 0 ? applicantUserIds : undefined,
-              studentNisList: [existing.studentNis],
-              excludeUserIds: actorExclude,
-            }
-          ),
-        ];
-
-        // Beritahu Kepala Asrama & Super Admin
-        pushTasks.push(
-          sendTargetedPush(
-            {
-              title: isLate ? 'Laporan Keterlambatan Santri ⚠️' : 'Santri Kembali ke Pondok 🏡',
-              body: isLate
-                ? `${existing.studentName} (${existing.className}) terlambat ${updated.lateDurationMinutes || 0} menit (Denda: Rp${(updated.lateFineAmount || 0).toLocaleString('id-ID')}).`
-                : `${existing.studentName} (${existing.className}) telah kembali ke pondok tepat waktu.`,
-              url: '/',
-              tag: statusTag,
-            },
-            {
-              roles: ['KEPALA_ASRAMA', 'SUPER_ADMIN'],
-              excludeUserIds: actorExclude,
-            }
-          )
-        );
-
-        await Promise.allSettled(pushTasks);
       }
     } catch (pushErr) {
       console.error('Push notification trigger error on PATCH:', pushErr);
@@ -549,5 +696,55 @@ export async function PATCH(request: NextRequest) {
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Gagal memperbarui status izin' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    let id = searchParams.get('id');
+    let actorName = searchParams.get('actorName') || 'Admin Asrama';
+    let actorRole = searchParams.get('actorRole') || 'KEPALA_ASRAMA';
+
+    if (!id) {
+      try {
+        const body = await request.json();
+        id = body.id;
+        if (body.actorName) actorName = body.actorName;
+        if (body.actorRole) actorRole = body.actorRole;
+      } catch {}
+    }
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID izin wajib disertakan.' }, { status: 400 });
+    }
+
+    const existing = await prisma.permission.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Data izin tidak ditemukan.' }, { status: 404 });
+    }
+
+    // Hapus log terkait terlebih dahulu, kemudian hapus perizinan
+    await prisma.permissionLog.deleteMany({
+      where: { permissionId: id },
+    });
+    await prisma.permission.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Arsip perizinan santri ${existing.studentName} berhasil dihapus.`,
+      deletedId: id,
+    });
+  } catch (error: any) {
+    console.error('Error deleting permission:', error);
+    return NextResponse.json(
+      { error: error.message || 'Gagal menghapus arsip perizinan.' },
+      { status: 500 }
+    );
   }
 }
