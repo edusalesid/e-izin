@@ -54,6 +54,36 @@ export async function GET(request: NextRequest) {
       where.className = { equals: classroomName, mode: 'insensitive' };
     }
 
+    // Sinkronisasi otomatis: santri yang izinnya disetujui dan jadwal rencana keluarnya sudah tiba (misal hari Sabtu tiba)
+    const nowIso = new Date().toISOString();
+    try {
+      const dueApproved = await prisma.permission.findMany({
+        where: {
+          status: 'APPROVED_WALI_KELAS',
+          plannedDeparture: {
+            lte: nowIso,
+          },
+        },
+        select: { id: true, plannedDeparture: true, actualDeparture: true },
+      });
+
+      if (dueApproved.length > 0) {
+        await Promise.all(
+          dueApproved.map((p) =>
+            prisma.permission.update({
+              where: { id: p.id },
+              data: {
+                status: 'SEDANG_DI_LUAR',
+                actualDeparture: p.actualDeparture || p.plannedDeparture,
+              },
+            })
+          )
+        );
+      }
+    } catch (syncErr) {
+      console.warn('Auto-transition scheduled permissions warning:', syncErr);
+    }
+
     const list = await prisma.permission.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -214,12 +244,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Aturan Requirement 1: Jika sudah diizinkan, otomatis dianggap sudah keluar asrama (SEDANG_DI_LUAR)
-    const initialStatus = isAutoApprove ? 'SEDANG_DI_LUAR' : 'PENDING_WALI_KELAS';
+    // Aturan Perhitungan Waktu Keluar:
+    // Jika izin disetujui otomatis (auto-approve):
+    // Cek apakah jadwal rencana keluar sudah tiba/lewat atau masih di masa mendatang (misal diajukan Senin untuk Sabtu).
+    const departureDate = new Date(body.plannedDeparture);
+    const isDepartureTimeReached = !isNaN(departureDate.getTime()) && departureDate <= new Date();
+
+    const initialStatus = isAutoApprove
+      ? (isDepartureTimeReached ? 'SEDANG_DI_LUAR' : 'APPROVED_WALI_KELAS')
+      : 'PENDING_WALI_KELAS';
     const approvedById = isAutoApprove ? (body.applicantId || null) : null;
     const approvedByName = isAutoApprove ? (body.applicantName || classroomWaliName) : null;
     const approvedAt = isAutoApprove ? new Date().toISOString() : null;
-    const actualDeparture = isAutoApprove ? new Date().toISOString() : null;
+    const actualDeparture = (isAutoApprove && isDepartureTimeReached) ? new Date().toISOString() : null;
 
     const targetApproverId = isAutoApprove ? null : (body.targetApproverId || classroomWaliId || null);
     const targetApproverName = isAutoApprove
@@ -459,10 +496,11 @@ export async function PATCH(request: NextRequest) {
 
     // ==========================================
     // 1. APPROVAL (DISETUJUI)
-    // Requirement 1: Jika disetujui, otomatis langsung dianggap sudah keluar asrama (SEDANG_DI_LUAR)
-    // Requirement 3: Super admin mengontrol hak menyetujui akun lain
+    // Jika diajukan untuk tanggal masa depan (misal diajukan Senin untuk Sabtu),
+    // status disetujui (APPROVED_WALI_KELAS) dan santri tetap dihitung di asrama sampai tanggal rencana tiba.
+    // Jika waktu rencana keluar sudah tiba/lewat, status langsung aktif keluar (SEDANG_DI_LUAR).
     // ==========================================
-    if (status === 'APPROVED_WALI_KELAS' || status === 'SEDANG_DI_LUAR' || body.action === 'APPROVE') {
+    if (status === 'APPROVED_WALI_KELAS' || body.action === 'APPROVE') {
       if (accessSettings.superAdminOnlyApproval && actorRole !== 'SUPER_ADMIN') {
         return NextResponse.json(
           { error: 'Mode "Hanya Super Admin Menyetujui" sedang aktif. Hanya Super Admin yang berwenang menyetujui izin ini.' },
@@ -477,14 +515,35 @@ export async function PATCH(request: NextRequest) {
         );
       }
 
-      // Otomatis tercatat keluar asrama saat diizinkan
-      updateData.status = 'SEDANG_DI_LUAR';
-      updateData.actualDeparture = actualDeparture || new Date().toISOString();
+      const departureDate = new Date(existing.plannedDeparture);
+      const isDepartureTimeReached = !isNaN(departureDate.getTime()) && departureDate <= new Date();
+
+      if (isDepartureTimeReached) {
+        updateData.status = 'SEDANG_DI_LUAR';
+        updateData.actualDeparture = actualDeparture || new Date().toISOString();
+        logNote = logNote || `Disetujui oleh ${actorName} (${actorRole}). Santri tercatat sudah keluar asrama.`;
+      } else {
+        updateData.status = 'APPROVED_WALI_KELAS';
+        updateData.actualDeparture = null;
+        logNote = logNote || `Disetujui oleh ${actorName} (${actorRole}). Santri siap keluar pada jadwal rencana keberangkatan.`;
+      }
+
       updateData.approvedById = actorId || null;
       updateData.approvedByName = actorName;
       updateData.approvedAt = new Date().toISOString();
       logAction = 'APPROVED';
-      logNote = logNote || `Disetujui oleh ${actorName} (${actorRole}). Santri otomatis tercatat sudah keluar asrama.`;
+    }
+
+    // ==========================================
+    // 1b. CHECK-OUT GERBANG (SATPAM / PETUGAS MEMVERIFIKASI SANTRI KELUAR)
+    // ==========================================
+    else if (status === 'SEDANG_DI_LUAR' || body.action === 'CHECK_OUT') {
+      updateData.status = 'SEDANG_DI_LUAR';
+      updateData.actualDeparture = actualDeparture || new Date().toISOString();
+      updateData.satpamDepartureId = actorId || null;
+      updateData.satpamDepartureName = actorName;
+      logAction = 'CHECK_OUT';
+      logNote = logNote || `Santri diverifikasi keluar pos gerbang oleh ${actorName} (${actorRole}).`;
     }
 
     // ==========================================
@@ -581,15 +640,48 @@ export async function PATCH(request: NextRequest) {
       const actorExclude = actorId ? [actorId] : [];
       const statusTag = `perm-status-${updated.id}-${updated.status}`;
 
-      if (updated.status === 'SEDANG_DI_LUAR') {
+      if (updated.status === 'APPROVED_WALI_KELAS') {
         const applicantUserIds = [existing.applicantId, existing.targetApproverId].filter(Boolean) as string[];
 
         await Promise.allSettled([
           // Beritahu Pemohon & Orang Tua
           sendTargetedPush(
             {
-              title: 'Izin Santri Disetujui (Keluar Asrama) ✅',
-              body: `Alhamdulillah, izin ${existing.studentName} (${existing.className}) telah disetujui oleh ${actorName}. Santri otomatis tercatat keluar asrama.`,
+              title: 'Izin Santri Disetujui ✅',
+              body: `Alhamdulillah, izin ${existing.studentName} (${existing.className}) telah disetujui oleh ${actorName}. Santri siap keluar sesuai jadwal.`,
+              url: '/',
+              tag: statusTag,
+            },
+            {
+              userIds: applicantUserIds.length > 0 ? applicantUserIds : undefined,
+              roles: ['KEPALA_ASRAMA', 'SUPER_ADMIN'],
+              studentNisList: [existing.studentNis],
+              excludeUserIds: actorExclude,
+            }
+          ),
+          // Beritahu Satpam di pos gerbang
+          sendTargetedPush(
+            {
+              title: 'Izin Santri Siap Keluar 🚪',
+              body: `Santri ${existing.studentName} (${existing.className}) telah disetujui izin keluar gerbang.`,
+              url: '/',
+              tag: statusTag,
+            },
+            {
+              roles: ['SATPAM'],
+              excludeUserIds: actorExclude,
+            }
+          ),
+        ]);
+      } else if (updated.status === 'SEDANG_DI_LUAR') {
+        const applicantUserIds = [existing.applicantId, existing.targetApproverId].filter(Boolean) as string[];
+
+        await Promise.allSettled([
+          // Beritahu Pemohon & Orang Tua
+          sendTargetedPush(
+            {
+              title: 'Santri Telah Keluar Gerbang 🚗',
+              body: `Santri ${existing.studentName} (${existing.className}) tercatat keluar pos gerbang (${actorName}).`,
               url: '/',
               tag: statusTag,
             },

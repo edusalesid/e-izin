@@ -5,7 +5,7 @@ import { Student, Permission } from '@/lib/types';
 import { CreatePermissionForm } from '../forms/CreatePermissionForm';
 import { PermissionCard } from '../cards/PermissionCard';
 import { HistoryView } from './HistoryView';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, isPermissionOutside } from '@/lib/utils';
 import {
   Clock,
   CheckCircle2,
@@ -136,9 +136,9 @@ export function ParentPortalView({
               </div>
 
               <div className="shrink-0 text-right">
-                {activePermission?.status === 'SEDANG_DI_LUAR' ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-300">
-                    <Clock className="w-3 h-3 text-amber-600" />
+                {activePermission && isPermissionOutside(activePermission) ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-800 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-200">
+                    <Clock className="w-3 h-3 text-purple-600" />
                     Di Luar Asrama
                   </span>
                 ) : (
@@ -210,14 +210,14 @@ export function ParentPortalView({
                     </div>
                     <div>
                       <p className="text-xs font-bold text-zinc-900">
-                        {activePermission.status === 'SEDANG_DI_LUAR'
+                        {isPermissionOutside(activePermission)
                           ? 'Santri Telah Keluar Gerbang'
-                          : 'Menunggu Santri Melewati Pos Gerbang'}
+                          : 'Menunggu Jadwal Keluar / Pos Gerbang'}
                       </p>
                       <p className="text-[11px] text-zinc-500">
                         {activePermission.actualDeparture
                           ? `Keluar pada: ${formatDateTime(activePermission.actualDeparture)}`
-                          : 'Petugas pos satpam akan memverifikasi saat santri keluar'}
+                          : `Rencana keluar: ${formatDateTime(activePermission.plannedDeparture)}`}
                       </p>
                     </div>
                   </div>

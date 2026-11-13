@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { useStaff } from '@/hooks/useStaff';
 import { StatusBadge } from '@/components/cards/StatusBadge';
 import { SuratIzinPreviewModal } from '@/components/modals/SuratIzinPreviewModal';
-import { formatDateTime, formatDuration } from '@/lib/utils';
+import { formatDateTime, formatDuration, isPermissionOutside } from '@/lib/utils';
 import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
 import {
@@ -95,8 +95,14 @@ export default function PermissionDetailPage() {
         throw new Error(errorData.error || 'Gagal menyetujui izin');
       }
 
+      const resData = await res.json().catch(() => ({}));
+      const updatedPerm = resData?.permission || permission;
+      const isOutNow = updatedPerm?.status === 'SEDANG_DI_LUAR';
+
       toast.success('Izin Berhasil Disetujui', {
-        description: `Izin untuk ${permission?.studentName || 'santri'} disetujui. Santri otomatis tercatat sudah keluar asrama.`,
+        description: isOutNow
+          ? `Izin untuk ${permission?.studentName || 'santri'} disetujui. Santri tercatat sudah keluar asrama.`
+          : `Izin untuk ${permission?.studentName || 'santri'} disetujui. Santri siap keluar sesuai jadwal rencana keberangkatan.`,
       });
 
       try {
@@ -262,7 +268,7 @@ export default function PermissionDetailPage() {
   const role = session?.role;
   const isPendingWali = permission.status === 'PENDING_WALI_KELAS';
   const isApproved = permission.status === 'APPROVED_WALI_KELAS';
-  const isOutside = permission.status === 'SEDANG_DI_LUAR';
+  const isOutside = isPermissionOutside(permission);
   const isCancelled = permission.status === 'CANCELLED';
 
   return (
@@ -350,18 +356,28 @@ export default function PermissionDetailPage() {
           </div>
         </div>
 
-        {/* Realtime Status Keluar Asrama (Requirement 1: otomatis dianggap keluar asrama) */}
-        {(isOutside || isApproved) && (
+        {/* Realtime Status Keluar Asrama */}
+        {isOutside ? (
+          <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-3 text-xs space-y-1 text-purple-950 font-medium">
+            <div className="flex items-center gap-1.5 font-bold text-purple-900">
+              <CheckCircle2 className="w-4 h-4 text-purple-700 shrink-0" />
+              <span>Santri Sedang Berada di Luar Asrama</span>
+            </div>
+            <p className="text-[11px] text-purple-800 pl-5.5">
+              Santri aktif tercatat berada di luar pondok sejak {formatDateTime(permission.actualDeparture || permission.plannedDeparture)}.
+            </p>
+          </div>
+        ) : isApproved ? (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs space-y-1 text-emerald-950 font-medium">
             <div className="flex items-center gap-1.5 font-bold text-emerald-900">
               <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-              <span>Santri Otomatis Tercatat Sudah Keluar Asrama</span>
+              <span>Izin Telah Disetujui (Menunggu Jadwal Keluar)</span>
             </div>
             <p className="text-[11px] text-emerald-800 pl-5.5">
-              Persetujuan langsung mengaktifkan status santri di luar asrama.
+              Santri saat ini masih berada di asrama. Santri dihitung keluar sesuai rencana: {formatDateTime(permission.plannedDeparture)}.
             </p>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Penjemput & Pemohon */}
@@ -410,7 +426,7 @@ export default function PermissionDetailPage() {
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4 shadow-xs space-y-3">
           <h2 className="text-xs font-bold text-zinc-900">Keputusan Persetujuan Izin</h2>
           <p className="text-[11px] text-zinc-600">
-            Begitu disetujui, santri otomatis dianggap sudah keluar asrama dan surat izin dapat langsung diekspor ke PDF.
+            Setelah disetujui, santri dihitung keluar sesuai jadwal rencana keberangkatan dan surat izin resmi langsung dapat diekspor ke PDF.
           </p>
 
           {isRejecting ? (

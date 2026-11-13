@@ -12,6 +12,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { isPermissionOutside } from '@/lib/utils';
 
 interface UstadzViewProps {
   activeTab: TabKey;
@@ -44,7 +45,7 @@ export function UstadzView({
     (p) => p.applicantType === 'USTADZ' && p.applicantId === currentUser.id
   );
 
-  const outsideStudents = permissions.filter((p) => p.status === 'SEDANG_DI_LUAR');
+  const outsideStudents = permissions.filter((p) => isPermissionOutside(p));
 
   const filteredSubmissions = mySubmissions.filter((p) => {
     if (!query.trim()) return true;

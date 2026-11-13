@@ -26,14 +26,24 @@ export function StatusBadge({ status, className, showIcon = true }: StatusBadgeP
       );
 
     case 'APPROVED_WALI_KELAS':
+      return (
+        <Badge
+          variant="approved"
+          className={cn(baseClass, 'bg-emerald-50 text-emerald-800 border-emerald-200', className)}
+        >
+          {showIcon && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />}
+          <span>Disetujui (Siap Keluar)</span>
+        </Badge>
+      );
+
     case 'SEDANG_DI_LUAR':
       return (
         <Badge
           variant="active"
-          className={cn(baseClass, 'bg-emerald-50 text-emerald-800 border-emerald-200', className)}
+          className={cn(baseClass, 'bg-purple-50 text-purple-800 border-purple-200', className)}
         >
-          {showIcon && <LogOut className="w-3.5 h-3.5 text-emerald-700" />}
-          <span>Di Luar Asrama</span>
+          {showIcon && <LogOut className="w-3.5 h-3.5 text-purple-700" />}
+          <span>Sedang di Luar</span>
         </Badge>
       );
 

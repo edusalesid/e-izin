@@ -18,7 +18,7 @@ import { SuratIzinPreviewModal } from '@/components/modals/SuratIzinPreviewModal
 import { CreatePermissionDrawer } from '@/components/drawers/CreatePermissionDrawer';
 import { ReturnStudentDrawer } from '@/components/drawers/ReturnStudentDrawer';
 import { RefreshCw, Database, Users } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, isPermissionOutside, isPermissionLate } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   sendPwaNotification,
@@ -369,18 +369,24 @@ export default function UnifiedMainPortalPage() {
 
       const resData = await res.json().catch(() => ({}));
       const updatedPerm = resData?.permission || perm;
+      const targetStatus = updatedPerm?.status || 'APPROVED_WALI_KELAS';
+      const isOutNow = targetStatus === 'SEDANG_DI_LUAR';
 
-      markLocalPermissionAction(id, 'SEDANG_DI_LUAR');
+      markLocalPermissionAction(id, targetStatus);
 
       toast.success('Izin Berhasil Disetujui', {
         description: perm
-          ? `Izin ${perm.studentName} disetujui oleh ${actorTitle}. Santri otomatis tercatat sudah keluar asrama.`
-          : `Permohonan izin telah disetujui oleh ${actorTitle}. Santri otomatis tercatat sudah keluar asrama.`,
+          ? isOutNow
+            ? `Izin ${perm.studentName} disetujui oleh ${actorTitle}. Santri tercatat sudah keluar asrama.`
+            : `Izin ${perm.studentName} disetujui oleh ${actorTitle}. Santri siap keluar sesuai jadwal rencana keberangkatan.`
+          : `Permohonan izin telah disetujui oleh ${actorTitle}.`,
       });
 
       sendPwaNotification('Izin Santri Disetujui', {
-        body: `Permohonan izin telah disetujui oleh ${actorTitle}. Santri otomatis tercatat sudah keluar asrama.`,
-        tag: `perm-status-${id}-SEDANG_DI_LUAR`,
+        body: isOutNow
+          ? `Permohonan izin telah disetujui oleh ${actorTitle}. Santri tercatat sudah keluar asrama.`
+          : `Permohonan izin telah disetujui oleh ${actorTitle}. Santri siap keluar sesuai jadwal keberangkatan.`,
+        tag: `perm-status-${id}-${targetStatus}`,
       });
 
       // Tampilkan Modal Pratinjau & Export PDF Surat Izin (Requirement 4)
@@ -604,10 +610,8 @@ export default function UnifiedMainPortalPage() {
     return p.status === 'PENDING_WALI_KELAS';
   }).length;
 
-  const outsideCount = permissions.filter((p) => p.status === 'SEDANG_DI_LUAR').length;
-  const lateCount = permissions.filter(
-    (p) => p.status === 'KEMBALI_TERLAMBAT' || (p.status === 'SEDANG_DI_LUAR' && new Date(p.plannedReturn) < new Date())
-  ).length;
+  const outsideCount = permissions.filter((p) => isPermissionOutside(p)).length;
+  const lateCount = permissions.filter((p) => isPermissionLate(p)).length;
 
   if (!isSessionLoaded) {
     return <FullPortalPageSkeleton />;

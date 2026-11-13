@@ -35,7 +35,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { cn, formatRupiah, DEFAULT_FINE_SETTINGS } from '@/lib/utils';
+import { cn, formatRupiah, DEFAULT_FINE_SETTINGS, isPermissionOutside, isPermissionLate } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface KepalaAsramaViewProps {
@@ -198,17 +198,12 @@ export function KepalaAsramaView({
   );
 
   const currentlyOutside = useMemo(
-    () => permissions.filter((p) => p.status === 'SEDANG_DI_LUAR'),
+    () => permissions.filter((p) => isPermissionOutside(p)),
     [permissions]
   );
 
   const latePermissions = useMemo(() => {
-    const now = new Date();
-    return permissions.filter(
-      (p) =>
-        p.status === 'KEMBALI_TERLAMBAT' ||
-        (p.status === 'SEDANG_DI_LUAR' && new Date(p.plannedReturn) < now)
-    );
+    return permissions.filter((p) => isPermissionLate(p));
   }, [permissions]);
 
   // Sub-tab internal untuk penggabungan fitur antislop

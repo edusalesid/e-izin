@@ -29,7 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
+import { cn, isPermissionOutside } from '@/lib/utils';
 import { HistoryView } from './HistoryView';
 import { PesiarView } from './PesiarView';
 
@@ -225,7 +225,7 @@ export function WaliKelasView({
 
   // Santri yang sedang berada di luar ma'had
   const outsideList = useMemo(
-    () => permissions.filter((p) => p.status === 'SEDANG_DI_LUAR'),
+    () => permissions.filter((p) => isPermissionOutside(p)),
     [permissions]
   );
 
@@ -313,7 +313,7 @@ export function WaliKelasView({
     let outside = 0;
     for (const s of myClassroomStudents) {
       const perm = activePermissionsMap.get(s.id);
-      if (perm && perm.status === 'SEDANG_DI_LUAR') {
+      if (perm && isPermissionOutside(perm)) {
         outside++;
       }
     }
@@ -329,7 +329,7 @@ export function WaliKelasView({
   const filteredClassroomStudents = useMemo(() => {
     return myClassroomStudents.filter((student) => {
       const activePerm = activePermissionsMap.get(student.id);
-      const isOutside = activePerm?.status === 'SEDANG_DI_LUAR';
+      const isOutside = activePerm ? isPermissionOutside(activePerm) : false;
 
       if (studentStatusFilter === 'IN_DORM' && isOutside) return false;
       if (studentStatusFilter === 'OUTSIDE' && !isOutside) return false;
@@ -922,8 +922,8 @@ export function WaliKelasView({
             <div className="space-y-2.5">
               {filteredClassroomStudents.map((student) => {
                 const activePerm = activePermissionsMap.get(student.id);
-                const isOutside = activePerm?.status === 'SEDANG_DI_LUAR';
-                const isApprovedReady = activePerm?.status === 'APPROVED_WALI_KELAS';
+                const isOutside = activePerm ? isPermissionOutside(activePerm) : false;
+                const isApprovedReady = activePerm?.status === 'APPROVED_WALI_KELAS' && !isOutside;
                 const parentWaUrl = getParentWhatsAppUrl(student.parentPhone, student.fullName);
 
                 return (
@@ -983,7 +983,7 @@ export function WaliKelasView({
                             </span>
                           )}
                           <div className="flex items-center gap-1.5 mt-1.5 justify-end">
-                            {onPreviewSurat && (
+                            {onPreviewSurat && activePerm && (
                               <button
                                 type="button"
                                 onClick={() => onPreviewSurat(activePerm)}
@@ -992,7 +992,7 @@ export function WaliKelasView({
                                 Cetak PDF
                               </button>
                             )}
-                            {onCancel && (
+                            {onCancel && activePerm && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1010,10 +1010,15 @@ export function WaliKelasView({
                         <div className="text-right">
                           <Badge
                             variant="approved"
-                            className="bg-emerald-700 text-white font-bold text-xs px-2.5 py-0.5 rounded-full"
+                            className="bg-emerald-600 text-white font-bold text-xs px-2.5 py-0.5 rounded-full"
                           >
-                            Di Luar Asrama
+                            Siap Keluar
                           </Badge>
+                          {activePerm?.plannedDeparture && (
+                            <span className="block text-[10px] text-zinc-500 font-medium mt-1">
+                              Rencana keluar: {new Intl.DateTimeFormat('id-ID', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(activePerm.plannedDeparture)).replace(/\./g, ':')} WIB
+                            </span>
+                          )}
                           <div className="flex items-center gap-1.5 mt-1.5 justify-end">
                             {onPreviewSurat && activePerm && (
                               <button

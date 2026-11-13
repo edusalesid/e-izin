@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useStaff } from '@/hooks/useStaff';
 import { StatusBadge } from '@/components/cards/StatusBadge';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, isPermissionOutside } from '@/lib/utils';
 import {
   Users,
   Search,
@@ -50,11 +50,12 @@ export default function SantriPosisiPage() {
         (p.status === 'SEDANG_DI_LUAR' || p.status === 'APPROVED_WALI_KELAS')
     );
 
+    const isOutside = activePerm ? isPermissionOutside(activePerm) : false;
     if (statusFilter === 'OUTSIDE') {
-      return activePerm?.status === 'SEDANG_DI_LUAR';
+      return isOutside;
     }
     if (statusFilter === 'DORM') {
-      return !activePerm || activePerm.status !== 'SEDANG_DI_LUAR';
+      return !isOutside;
     }
 
     return true;
@@ -174,8 +175,8 @@ export default function SantriPosisiPage() {
                   p.status === 'PENDING_WALI_KELAS')
             );
 
-            const isOutside = activePerm?.status === 'SEDANG_DI_LUAR';
-            const isApproved = activePerm?.status === 'APPROVED_WALI_KELAS';
+            const isOutside = activePerm ? isPermissionOutside(activePerm) : false;
+            const isApproved = activePerm?.status === 'APPROVED_WALI_KELAS' && !isOutside;
             const isPending = activePerm?.status === 'PENDING_WALI_KELAS';
 
             return (

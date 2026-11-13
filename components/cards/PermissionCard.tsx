@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Permission, UserRole } from '@/lib/types';
 import { StatusBadge } from './StatusBadge';
-import { formatDateTime, formatDuration, formatRupiah, calculateLateFine } from '@/lib/utils';
+import { formatDateTime, formatDuration, formatRupiah, calculateLateFine, isPermissionOutside, isPermissionLate } from '@/lib/utils';
 import {
   Clock,
   Check,
@@ -116,11 +116,11 @@ export function PermissionCard({
 
   const isPendingWali = permission.status === 'PENDING_WALI_KELAS';
   const isApproved = permission.status === 'APPROVED_WALI_KELAS';
-  const isOutside = permission.status === 'SEDANG_DI_LUAR';
+  const isOutside = isPermissionOutside(permission);
   const isCancelled = permission.status === 'CANCELLED';
   const isKeluarSebentar = permission.category === 'KELUAR_SEBENTAR';
 
-  const isLateNow = isOutside && new Date() > new Date(permission.plannedReturn);
+  const isLateNow = isPermissionLate(permission);
   const lateMinutesNow = isLateNow
     ? Math.round((new Date().getTime() - new Date(permission.plannedReturn).getTime()) / (1000 * 60))
     : 0;
@@ -474,6 +474,18 @@ export function PermissionCard({
                   Setujui
                 </Button>
               </>
+            )}
+
+            {/* Tombol Check-Out Gerbang (Satpam) */}
+            {activeRole === 'SATPAM' && isApproved && onCheckOut && (
+              <Button
+                type="button"
+                onClick={() => onCheckOut(permission.id)}
+                className="h-9 px-3.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+              >
+                <CheckCircle2 className="w-4 h-4 text-blue-200" />
+                <span>Check-Out Gerbang</span>
+              </Button>
             )}
 
             {/* 2. Konfirmasi Kembali ke Asrama (Satu CTA Utama yang Jelas dan Kuat) */}

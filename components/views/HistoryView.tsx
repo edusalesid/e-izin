@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Permission, UserRole, PermissionStatus, PermissionCategory } from '@/lib/types';
 import { StatusBadge } from '../cards/StatusBadge';
-import { formatDateTime, formatDateOnly, formatDuration, formatRupiah } from '@/lib/utils';
+import { formatDateTime, formatDateOnly, formatDuration, formatRupiah, isPermissionOutside, isPermissionLate } from '@/lib/utils';
 import {
   Search,
   X,
@@ -227,10 +227,10 @@ export function HistoryView({
   // Ringkasan Statistik Riwayat Komprehensif
   const stats = useMemo(() => {
     const total = permissions.length;
-    const approved = permissions.filter((p) => p.status === 'APPROVED_WALI_KELAS').length;
-    const outside = permissions.filter((p) => p.status === 'SEDANG_DI_LUAR').length;
+    const outside = permissions.filter((p) => isPermissionOutside(p)).length;
+    const approved = permissions.filter((p) => p.status === 'APPROVED_WALI_KELAS' && !isPermissionOutside(p)).length;
     const onTime = permissions.filter((p) => p.status === 'KEMBALI_TEPAT_WAKTU').length;
-    const late = permissions.filter((p) => p.status === 'KEMBALI_TERLAMBAT').length;
+    const late = permissions.filter((p) => p.status === 'KEMBALI_TERLAMBAT' || isPermissionLate(p)).length;
     const rejected = permissions.filter((p) => p.status === 'REJECTED').length;
 
     return { total, approved, outside, onTime, late, rejected };
@@ -254,8 +254,16 @@ export function HistoryView({
       }
 
       // 2. Status filter
-      if (statusFilter !== 'ALL' && p.status !== statusFilter) {
-        return false;
+      if (statusFilter !== 'ALL') {
+        if (statusFilter === 'SEDANG_DI_LUAR') {
+          if (!isPermissionOutside(p)) return false;
+        } else if (statusFilter === 'APPROVED_WALI_KELAS') {
+          if (p.status !== 'APPROVED_WALI_KELAS' || isPermissionOutside(p)) return false;
+        } else if (statusFilter === 'KEMBALI_TERLAMBAT') {
+          if (p.status !== 'KEMBALI_TERLAMBAT' && !isPermissionLate(p)) return false;
+        } else if (p.status !== statusFilter) {
+          return false;
+        }
       }
 
       // 3. Class filter

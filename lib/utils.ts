@@ -246,3 +246,45 @@ export function getEscortTypeLabel(escortType?: string): string {
   if (!escortType) return '-';
   return ESCORT_LABELS[escortType] || escortType;
 }
+
+/**
+ * Mengecek apakah santri saat ini sedang berada di luar asrama.
+ * Santri dihitung keluar jika:
+ * 1. Status 'SEDANG_DI_LUAR', ATAU
+ * 2. Status 'APPROVED_WALI_KELAS' dan jadwal rencana keluar (plannedDeparture) sudah tiba/lewat.
+ * Jika izin disetujui untuk tanggal mendatang (misal diajukan Senin untuk Sabtu),
+ * santri tetap dihitung di asrama sampai tanggal keberangkatan tiba.
+ */
+export function isPermissionOutside(permission?: {
+  status?: string | null;
+  plannedDeparture?: string | null;
+  plannedReturn?: string | null;
+} | null): boolean {
+  if (!permission || !permission.status) return false;
+  if (permission.status === 'SEDANG_DI_LUAR') return true;
+  if (permission.status === 'APPROVED_WALI_KELAS') {
+    if (!permission.plannedDeparture) return false;
+    const depTime = new Date(permission.plannedDeparture).getTime();
+    if (isNaN(depTime)) return false;
+    return Date.now() >= depTime;
+  }
+  return false;
+}
+
+/**
+ * Mengecek apakah santri saat ini terlambat kembali.
+ * Terlambat jika sudah dihitung keluar DAN waktu rencana kembali (plannedReturn) sudah lewat dari sekarang.
+ */
+export function isPermissionLate(permission?: {
+  status?: string | null;
+  plannedDeparture?: string | null;
+  plannedReturn?: string | null;
+} | null): boolean {
+  if (!permission || !permission.status) return false;
+  if (permission.status === 'KEMBALI_TERLAMBAT') return true;
+  if (!permission.plannedReturn) return false;
+  const returnTime = new Date(permission.plannedReturn).getTime();
+  if (isNaN(returnTime)) return false;
+  return isPermissionOutside(permission) && Date.now() > returnTime;
+}
+
